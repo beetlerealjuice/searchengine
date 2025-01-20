@@ -6,8 +6,7 @@ import lombok.Setter;
 import javax.persistence.*;
 
 @Entity
-@Table(name = "page",
-        indexes = @Index(name = "path_index", columnList = "path"))
+@Table(name = "page", indexes = @Index(name = "path_index", columnList = "path"))
 @Getter
 @Setter
 public class Page {
@@ -20,7 +19,7 @@ public class Page {
     @JoinColumn(name = "site_id")
     private Site site;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
+    @Column(columnDefinition = "VARCHAR(255)", nullable = false)
     private String path;
 
     @Column(columnDefinition = "INT", nullable = false)
@@ -28,7 +27,5 @@ public class Page {
 
     @Column(columnDefinition = "MEDIUMTEXT", nullable = false)
     private String content;
-
-
 
 }
