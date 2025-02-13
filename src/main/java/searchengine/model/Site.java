@@ -1,38 +1,33 @@
 package searchengine.model;
 
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import javax.persistence.*;
-import java.util.Date;
-import java.util.List;
+import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "site")
 @Getter
 @Setter
+@Entity
 public class Site {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private int id;
 
-    @Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED')", nullable = false)
     @Enumerated(EnumType.STRING)
+    @Column(columnDefinition = "enum('INDEXING', 'INDEXED', 'FAILED')")
     private Status status;
 
-    @Column(name = "status_time", nullable = false, columnDefinition = "DATETIME")
-    private Date statusTime;
+    private LocalDateTime statusTime;
 
-    @Column(name = "last_error", columnDefinition = "TEXT")
+    @Column(columnDefinition = "TEXT")
     private String lastError;
 
-    @Column(columnDefinition = "VARCHAR(255)", nullable = false)
+    @Column(columnDefinition = "VARCHAR(255)")
     private String url;
 
-    @Column(columnDefinition = "VARCHAR(255)", nullable = false)
+    @Column(columnDefinition = "VARCHAR(255)")
     private String name;
 
-    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
-    private List<Page> pages;
 
 }

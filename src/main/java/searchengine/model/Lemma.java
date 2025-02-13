@@ -4,11 +4,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+@Entity
 @Getter
 @Setter
-@Entity
-@Table(indexes = @Index(columnList = "path"))
-public class Page {
+public class Lemma {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
@@ -18,10 +17,9 @@ public class Page {
     private Site site;
 
     @Column(columnDefinition = "VARCHAR(255)")
-    private String path;
+    private String lemma;
 
-    private int code;
+    private int frequency;
 
-    @Column(columnDefinition = "MEDIUMTEXT")
-    private String content;
+
 }

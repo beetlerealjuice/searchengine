@@ -2,21 +2,38 @@ server:
   port: 8080
 spring:
   datasource:
-    username: user
-    password: password
+    username: root
+    password: testtest
     url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
   jpa:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
     hibernate:
-      ddl-auto: update
+      ddl-auto: create
     show-sql: true
 indexing-settings:
   sites:
-    - url: https://www.lenta.ru
+    - url: https://www.lenta.ru/
       name: Лента.ру
-    - url: https://www.skillbox.ru
-      name: Skillbox
-    - url: https://www.playback.ru
+    - url: https://www.playback.ru/
       name: PlayBack.Ru
+    - url: https://volochek.life/
+      name: Volochek.life
+    #- url: http://radiomv.ru/
+    #  name: Radiomv.ru
+    #- url: https://ipfran.ru/
+    #  name: Ipfran.ru
+    #- url: https://dimonvideo.ru/
+    #  name: Dimonvideo.ru
+    #- url: https://nikoartgallery.com/
+    #  name: nikoartgallery.com
+    #- url: https://et-cetera.ru/mobile/
+    #  name: et-cetera.ru
+    #- url: https://www.lutherancathedral.ru/
+    #  name: Lutherancathedral.ru
+    #- url: https://dombulgakova.ru/
+    #  name: Dombulgakova.ru
+    #- url: https://www.svetlovka.ru/
+    #  name: Svetlovka.ru
+
