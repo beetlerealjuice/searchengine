@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import searchengine.config.SiteConfig;
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.IndexingResponse;
+import searchengine.repository.IndexSearchRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 import searchengine.utils.IndexingThread;
@@ -21,6 +23,9 @@ public class IndexingServiceImpl implements IndexingService {
     private final SitesList sites;
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
+    private final LemmaRepository lemmaRepository;
+    private final IndexSearchRepository indexSearchRepository;
+
     // Признак остановки индексации
     public static boolean stopIndexing;
     // Признак запущенной индексации
@@ -49,7 +54,11 @@ public class IndexingServiceImpl implements IndexingService {
 
         for (int i = 0; i < siteList.size(); i++) {
             // Запускаем поток обхода сайта
-            IndexingThread indexingThread = new IndexingThread(siteList, i, siteRepository, pageRepository);
+            IndexingThread indexingThread = new IndexingThread(siteList, i, siteRepository,
+                    pageRepository,
+                    lemmaRepository,
+                    indexSearchRepository);
+
             indexingThreads.add(indexingThread);
             indexingThread.start();
 
@@ -93,5 +102,22 @@ public class IndexingServiceImpl implements IndexingService {
                 .result(true)
                 .build();
 
+    }
+
+    private boolean isValidUrl(String url) {
+        String regex = "https?://[^,\\s]+";
+        return url.matches(regex);
+    }
+
+    @Override
+    public IndexingResponse indexPage(String url) {
+
+        if (!isValidUrl(url)) {
+            return getFalseResponse("Данная страница не найдена");
+        }
+
+
+
+        return getFalseResponse("Иди на хуй");
     }
 }

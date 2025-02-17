@@ -4,22 +4,20 @@ import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.springframework.http.HttpStatus;
 import searchengine.config.SiteConfig;
-import searchengine.model.Page;
-import searchengine.model.Site;
-import searchengine.model.Status;
+import searchengine.model.*;
+import searchengine.repository.IndexSearchRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 import searchengine.services.IndexingServiceImpl;
 
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 
 public class IndexingThread extends Thread {
@@ -28,12 +26,19 @@ public class IndexingThread extends Thread {
     private final int index;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
+    private final LemmaRepository lemmaRepository;
+    private final IndexSearchRepository indexSearchRepository;
 
-    public IndexingThread(List<SiteConfig> siteList, int index, SiteRepository siteRepository, PageRepository pageRepository) {
+    public IndexingThread(List<SiteConfig> siteList, int index, SiteRepository siteRepository,
+                          PageRepository pageRepository,
+                          LemmaRepository lemmaRepository,
+                          IndexSearchRepository indexSearchRepository) {
         this.siteList = siteList;
         this.index = index;
         this.siteRepository = siteRepository;
         this.pageRepository = pageRepository;
+        this.lemmaRepository = lemmaRepository;
+        this.indexSearchRepository = indexSearchRepository;
     }
 
     @Override
@@ -79,7 +84,7 @@ public class IndexingThread extends Thread {
         site.setStatus(Status.FAILED);
     }
 
-    private void setPage(Site site, String url) {
+    private void setPage(Site site, String url) throws IOException {
 
         Optional<Page> page = pageRepository.findByPath(extractPath(url));
         if (page.isPresent()) {
@@ -104,6 +109,45 @@ public class IndexingThread extends Thread {
 
         pageRepository.save(newPage);
 
+        if (newPage.getCode() != 200) return;
+
+        int frequency = 0;
+
+        LemmaFinder lemmaFinder = LemmaFinder.getInstance();
+        LemmaFinderEn lemmaFinderEn = LemmaFinderEn.getInstance();
+
+        lemmaFinderEn.collectLemmas(newPage.getContent());
+
+        Map<String, Integer> lemmas = new HashMap<>();
+        lemmas = lemmaFinder.collectLemmas(newPage.getContent());
+        lemmas.putAll(lemmaFinderEn.collectLemmas(newPage.getContent()));
+
+        for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
+            IndexSearch newIndex = new IndexSearch();
+            Lemma newLemma = new Lemma();
+            Optional<Lemma> lemma = lemmaRepository.findByLemma(entry.getKey());
+
+            if (lemma.isEmpty()) {
+                newLemma.setLemma(entry.getKey());
+                newLemma.setSite(site);
+                newLemma.setFrequency(frequency);
+                newIndex.setPage(newPage);
+                newIndex.setLemma(newLemma);
+                newIndex.setRank(Float.valueOf(entry.getValue()));
+
+                lemmaRepository.save(newLemma);
+                indexSearchRepository.save(newIndex);
+
+            } else {
+                frequency = lemma.get().getFrequency() + 1;
+                lemma.get().setFrequency(frequency);
+                newIndex.setPage(newPage);
+                newIndex.setLemma(lemma.get());
+                newIndex.setRank(Float.valueOf(entry.getValue()));
+                lemmaRepository.save(lemma.get());
+                indexSearchRepository.save(newIndex);
+            }
+        }
     }
 
     private String extractPath(String url) {
