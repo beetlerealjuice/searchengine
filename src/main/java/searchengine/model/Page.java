@@ -7,7 +7,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @Entity
-@Table(indexes = @Index(columnList = "path"))
+@Table(name = "page", indexes = @Index(columnList = "path"))
 public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

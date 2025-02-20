@@ -7,6 +7,7 @@ import lombok.Setter;
 @Entity
 @Getter
 @Setter
+@Table(name = "indexSearch")
 public class IndexSearch {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

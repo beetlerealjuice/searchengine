@@ -118,6 +118,6 @@ public class IndexingServiceImpl implements IndexingService {
 
 
 
-        return getFalseResponse("Иди на хуй");
+        return getFalseResponse("Ошибка!");
     }
 }

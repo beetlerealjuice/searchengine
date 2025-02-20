@@ -7,6 +7,7 @@ import lombok.Setter;
 @Entity
 @Getter
 @Setter
+@Table(name = "lemma")
 public class Lemma {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
