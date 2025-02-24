@@ -4,10 +4,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+@Table(name = "page", indexes = @Index(columnList = "path"))
 @Getter
 @Setter
 @Entity
-@Table(name = "page", indexes = @Index(columnList = "path"))
 public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

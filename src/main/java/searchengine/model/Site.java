@@ -6,10 +6,10 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
+@Table(name = "site")
 @Getter
 @Setter
 @Entity
-@Table(name = "site")
 public class Site {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

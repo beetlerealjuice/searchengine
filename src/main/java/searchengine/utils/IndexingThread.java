@@ -84,7 +84,7 @@ public class IndexingThread extends Thread {
         site.setStatus(Status.FAILED);
     }
 
-    private void setPage(Site site, String url) throws IOException {
+    public void setPage(Site site, String url) throws IOException {
 
         Optional<Page> page = pageRepository.findByPath(extractPath(url));
         if (page.isPresent()) {
@@ -144,6 +144,7 @@ public class IndexingThread extends Thread {
                 newIndex.setPage(newPage);
                 newIndex.setLemma(lemma.get());
                 newIndex.setRank(Float.valueOf(entry.getValue()));
+
                 lemmaRepository.save(lemma.get());
                 indexSearchRepository.save(newIndex);
             }
