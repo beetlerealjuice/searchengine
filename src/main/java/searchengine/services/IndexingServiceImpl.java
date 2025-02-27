@@ -144,6 +144,7 @@ public class IndexingServiceImpl implements IndexingService {
 
         String domain = extractDomain(url);
         List<Site> sitesInDB = siteRepository.findAll();
+        List<SiteConfig> siteList = sites.getSites();
 
         long count = sitesInDB.stream()
                 .filter(site -> site.getUrl().contains(domain))
@@ -154,16 +155,21 @@ public class IndexingServiceImpl implements IndexingService {
                         isAddPage = true;
                         addedSite = site;
                         addedUrl = url;
-
                     });
                     return site;
                 })
                 .count();
 
+        // Проверка если БД пока не создана
+        for (SiteConfig site : siteList) {
+            if (site.getUrl().contains(domain)) {
+                count++;
+            }
+        }
+
         if (count == 0)
             return getFalseResponse("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
 
-        List<SiteConfig> siteList = sites.getSites();
         SiteConfig newSite = new SiteConfig();
 
         newSite.setUrl(url);
