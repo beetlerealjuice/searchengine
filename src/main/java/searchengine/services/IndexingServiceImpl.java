@@ -6,7 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import searchengine.config.SiteConfig;
 import searchengine.config.SitesList;
-import searchengine.dto.statistics.IndexingResponse;
+import searchengine.dto.IndexingResponse;
 import searchengine.model.IndexSearch;
 import searchengine.model.Lemma;
 import searchengine.model.Page;

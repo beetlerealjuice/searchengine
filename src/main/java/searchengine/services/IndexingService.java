@@ -1,6 +1,6 @@
 package searchengine.services;
 
-import searchengine.dto.statistics.IndexingResponse;
+import searchengine.dto.IndexingResponse;
 
 public interface IndexingService {
     IndexingResponse startIndexing();
