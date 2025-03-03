@@ -22,5 +22,4 @@ public class IndexSearch {
 
     @Column(name = "`rank`")
     private Float rank;
-
 }

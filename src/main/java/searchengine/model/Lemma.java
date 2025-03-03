@@ -21,6 +21,4 @@ public class Lemma {
     private String lemma;
 
     private int frequency;
-
-
 }

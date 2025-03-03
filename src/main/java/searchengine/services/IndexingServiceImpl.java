@@ -182,6 +182,7 @@ public class IndexingServiceImpl implements IndexingService {
 
     private void findLemmaInDb(Page page) {
         List<IndexSearch> indexSearches = indexSearchRepository.findByPageId(page.getId());
+        indexSearchRepository.deleteByPageId(page.getId());
         pageRepository.deleteById(page.getId());
 
         for (IndexSearch indexSearch : indexSearches) {

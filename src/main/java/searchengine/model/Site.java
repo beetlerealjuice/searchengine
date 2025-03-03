@@ -29,6 +29,4 @@ public class Site {
 
     @Column(columnDefinition = "VARCHAR(255)")
     private String name;
-
-
 }

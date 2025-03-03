@@ -84,19 +84,20 @@ public class IndexingThread extends Thread {
         site.setStatus(Status.FAILED);
     }
 
-    public void setPage(Site site, String url) throws IOException {
+    public synchronized void setPage(Site site, String url) throws IOException {
 
         Optional<Page> page = pageRepository.findByPath(extractPath(url));
         if (page.isPresent()) {
             return;
         }
 
+
         Page newPage = new Page();
         newPage.setSite(site);
         newPage.setPath(extractPath(url));
 
         try {
-            Connection.Response response = Jsoup.connect(url.trim())
+            Connection.Response response = Jsoup.connect(url)
                     .userAgent("Mozilla")
                     .execute();
 
@@ -125,7 +126,7 @@ public class IndexingThread extends Thread {
         for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
             IndexSearch newIndex = new IndexSearch();
             Lemma newLemma = new Lemma();
-            Optional<Lemma> lemma = lemmaRepository.findByLemma(entry.getKey());
+            Optional<Lemma> lemma = lemmaRepository.findFirstByLemma(entry.getKey());
 
             if (lemma.isEmpty()) {
                 newLemma.setLemma(entry.getKey());
@@ -150,6 +151,7 @@ public class IndexingThread extends Thread {
             }
         }
     }
+
 
     private String extractPath(String url) {
         try {

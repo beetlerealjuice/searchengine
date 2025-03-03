@@ -6,5 +6,5 @@ import searchengine.model.Lemma;
 import java.util.Optional;
 
 public interface LemmaRepository extends CrudRepository<Lemma, Integer> {
-    Optional<Lemma> findByLemma(String lemma);
+    Optional<Lemma> findFirstByLemma(String lemma);
 }

@@ -14,10 +14,17 @@ spring:
     show-sql: true
 indexing-settings:
   sites:
-    - url: https://www.lenta.ru
-      name: Лента.ру
+#    - url: https://sendel.ru
+#      name: Sendel.ru
     - url: https://www.playback.ru
       name: PlayBack.Ru
-    - url: https://volochek.life
-      name: Volochek.life
-
+#    - url: https://volochek.life
+#      name: Volochek.life
+#    - url: https://ipfran.ru
+#      name: ipfran.ru
+#    - url: https://dimonvideo.ru
+#      name: dimonvideo.ru
+#    - url: https://dombulgakova.ru
+#      name: dombulgakova.ru
+#    - url: https://www.svetlovka.ru
+#      name: www.svetlovka.ru
