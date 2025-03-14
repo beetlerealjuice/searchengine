@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
 import searchengine.dto.SearchResponse;
+import searchengine.model.Site;
 import searchengine.repository.IndexSearchRepository;
 import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
@@ -31,6 +32,8 @@ public class SearchServiceImpl implements SearchService {
 
     private final EntityManager entityManager;
 
+    private static final double REPETITION_PERCENTAGE = 0.7;
+
     @Override
     @SneakyThrows
     public SearchResponse search(String query, String site, Integer offset, Integer limit) {
@@ -41,13 +44,6 @@ public class SearchServiceImpl implements SearchService {
 
         LemmaFinder lemmaFinder = LemmaFinder.getInstance();
         LemmaFinderEn lemmaFinderEn = LemmaFinderEn.getInstance();
-
-        if (isRussian(query)) {
-            System.out.println("Русский");
-        } else {
-            System.out.println("English");
-        }
-
         Set<String> lemmasFromQuery;
 
         if (isRussian(query)) {
@@ -56,10 +52,11 @@ public class SearchServiceImpl implements SearchService {
             lemmasFromQuery = lemmaFinderEn.getLemmaSet(query);
         }
         System.out.println("Stop");
-        filterLemmas(lemmasFromQuery);
+        filterLemmas(lemmasFromQuery, site);
+
+        System.out.println("Stop");
 
         System.out.println(lemmasFromQuery);
-
 
         return null;
     }
@@ -77,28 +74,36 @@ public class SearchServiceImpl implements SearchService {
                 .build();
     }
 
-    public void filterLemmas(Set<String> lemmasFromQuery) {
+    public void filterLemmas(Set<String> lemmasFromQuery, String website) {
+
         Set<String> lemmasToRemove = new HashSet<>();
 
         for (String lemma : lemmasFromQuery) {
-            String sql = "SELECT " +
-                    "    l.lemma, " +
-                    "    p.site_id, " +
-                    "    COUNT(*) AS repetition_count, " +
-                    "    (SELECT COUNT(*) FROM page WHERE site_id = p.site_id) AS total_pages_on_site " +
+            String sql =
+                    "SELECT " +
+                    " l.lemma, " +
+                    " p.site_id, " +
+                    " COUNT(*) AS repetition_count, " +
+                    " (SELECT COUNT(*) FROM page WHERE site_id = p.site_id) AS total_pages_on_site " +
                     "FROM " +
-                    "    index_search isa " +
+                    " index_search AS isa " +
                     "JOIN " +
-                    "    page p ON isa.page_id = p.id " +
+                    " page p ON isa.page_id = p.id " +
                     "JOIN " +
-                    "    lemma l ON isa.lemma_id = l.id " +
+                    " lemma l ON isa.lemma_id = l.id " +
                     "WHERE " +
-                    "    l.lemma = :lemma " +
+                    " l.lemma = :lemma " +
+                    (website != null ? "AND p.site_id = :siteId " : "") +
                     "GROUP BY " +
-                    "    p.site_id, l.lemma";
+                    " p.site_id, l.lemma";
 
             Query query = entityManager.createNativeQuery(sql);
-            query.setParameter("lemma", lemma); // Bind the lemma parameter
+            query.setParameter("lemma", lemma);
+
+            // Если поиск по заданному сайту, устанавливаем параметр siteId
+            if (website != null) {
+                query.setParameter("siteId", siteRepository.findByUrl(website).getId());
+            }
 
             List<Object[]> results = query.getResultList();
 
@@ -110,7 +115,7 @@ public class SearchServiceImpl implements SearchService {
                 if (repetitionCount != null && totalPagesOnSite != null) {
                     double repetitionPercentage = repetitionCount.doubleValue() / totalPagesOnSite.doubleValue();
 
-                    if (repetitionPercentage > 0.75) {
+                    if (repetitionPercentage > REPETITION_PERCENTAGE) {
                         lemmasToRemove.add(foundLemma);
                     }
                 }

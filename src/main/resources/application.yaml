@@ -14,8 +14,8 @@ spring:
     show-sql: true
 indexing-settings:
   sites:
-#    - url: https://sendel.ru
-#      name: Sendel.ru
+    - url: https://sendel.ru
+      name: Sendel.ru
     - url: https://www.playback.ru
       name: PlayBack.Ru
 #    - url: https://volochek.life
