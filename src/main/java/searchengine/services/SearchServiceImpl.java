@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
 import searchengine.dto.SearchResponse;
+import searchengine.model.Lemma;
 import searchengine.model.Site;
 import searchengine.repository.IndexSearchRepository;
 import searchengine.repository.LemmaRepository;
@@ -14,9 +15,8 @@ import searchengine.repository.SiteRepository;
 import searchengine.utils.LemmaFinder;
 import searchengine.utils.LemmaFinderEn;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 @Service
@@ -32,7 +32,7 @@ public class SearchServiceImpl implements SearchService {
 
     private final EntityManager entityManager;
 
-    private static final double REPETITION_PERCENTAGE = 0.7;
+    private static final double REPETITION_PERCENTAGE = 0.75;
 
     @Override
     @SneakyThrows
@@ -51,12 +51,14 @@ public class SearchServiceImpl implements SearchService {
         } else {
             lemmasFromQuery = lemmaFinderEn.getLemmaSet(query);
         }
-        System.out.println("Stop");
+
         filterLemmas(lemmasFromQuery, site);
 
+        List<String> sortedLemmas = getSortedLemmasByFrequencyAsc(lemmasFromQuery);
+
         System.out.println("Stop");
 
-        System.out.println(lemmasFromQuery);
+
 
         return null;
     }
@@ -74,6 +76,7 @@ public class SearchServiceImpl implements SearchService {
                 .build();
     }
 
+    // Фильтруем леммы встречающиеся более чем на 75% страниц
     public void filterLemmas(Set<String> lemmasFromQuery, String website) {
 
         Set<String> lemmasToRemove = new HashSet<>();
@@ -123,5 +126,13 @@ public class SearchServiceImpl implements SearchService {
         }
 
         lemmasFromQuery.removeAll(lemmasToRemove);
+    }
+
+    // Сортируем леммы в порядке увеличения частоты встречаемости
+    public List<String> getSortedLemmasByFrequencyAsc(Set<String> lemmasFromQuery) {
+        return lemmaRepository.findAndSortByFrequencyAsc(lemmasFromQuery)
+                .stream()
+                .map(Lemma::getLemma)
+                .collect(Collectors.toList());
     }
 }
