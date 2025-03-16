@@ -7,6 +7,7 @@ import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
 import searchengine.dto.SearchResponse;
 import searchengine.model.Lemma;
+import searchengine.model.Page;
 import searchengine.model.Site;
 import searchengine.repository.IndexSearchRepository;
 import searchengine.repository.LemmaRepository;
@@ -42,21 +43,58 @@ public class SearchServiceImpl implements SearchService {
             return getErrorSearchResponse("Задан пустой поисковый запрос");
         }
 
+        // Определяем язык запроса и получаем набор лемм
         LemmaFinder lemmaFinder = LemmaFinder.getInstance();
         LemmaFinderEn lemmaFinderEn = LemmaFinderEn.getInstance();
-        Set<String> lemmasFromQuery;
+        Set<String> lemmasFromQuery = isRussian(query)
+                ? lemmaFinder.getLemmaSet(query)
+                : lemmaFinderEn.getLemmaSet(query);
 
-        if (isRussian(query)) {
-            lemmasFromQuery = lemmaFinder.getLemmaSet(query);
-        } else {
-            lemmasFromQuery = lemmaFinderEn.getLemmaSet(query);
-        }
-
+        // Фильтруем леммы по принадлежности к сайту и по порогу повторяемости
         filterLemmas(lemmasFromQuery, site);
 
+        if (lemmasFromQuery.isEmpty()) {
+            return SearchResponse.builder()
+                    .result(true)
+                    .count(0)
+                    .data(Collections.emptyList())
+                    .build();
+        }
+
+        // Сортируем леммы по возрастанию частоты встречаемости
         List<String> sortedLemmas = getSortedLemmasByFrequencyAsc(lemmasFromQuery);
 
+        // Определяем siteId, если задан сайт
+        Integer siteId = (site != null) ? siteRepository.findByUrl(site).getId() : null;
+
+        // Для первой (самой редкой) леммы находим все id страниц, на которых она встречается
+        Set<Integer> resultPageIds = getPageIdsByLemma(sortedLemmas.get(0), siteId);
+
+        // Для каждой следующей леммы пересекаем найденный набор страниц с новыми
+        for (int i = 1; i < sortedLemmas.size(); i++) {
+            Set<Integer> lemmaPageIds = getPageIdsByLemma(sortedLemmas.get(i), siteId);
+            resultPageIds.retainAll(lemmaPageIds);
+            if (resultPageIds.isEmpty()) {
+                break;
+            }
+        }
+
+        // Если после пересечений страниц не осталось, возвращаем пустой список
+        if (resultPageIds.isEmpty()) {
+            return SearchResponse.builder()
+                    .result(true)
+                    .count(0)
+                    .data(Collections.emptyList())
+                    .build();
+        }
+
+        // Загружаем объекты Page по найденным идентификаторам
+        List<Page> pages = pageRepository.findAllByIdIn(resultPageIds);
+
+
         System.out.println("Stop");
+
+
 
 
 
@@ -150,5 +188,24 @@ public class SearchServiceImpl implements SearchService {
                 .stream()
                 .map(Lemma::getLemma)
                 .collect(Collectors.toList());
+    }
+
+    private Set<Integer> getPageIdsByLemma(String lemma, Integer siteId) {
+        String sql = "SELECT p.id " +
+                "FROM index_search AS isa " +
+                "JOIN page p ON isa.page_id = p.id " +
+                "JOIN lemma l ON isa.lemma_id = l.id " +
+                "WHERE l.lemma = :lemma " +
+                (siteId != null ? "AND p.site_id = :siteId" : "");
+
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("lemma", lemma);
+        if (siteId != null) {
+            query.setParameter("siteId", siteId);
+        }
+        List<?> results = query.getResultList();
+        return results.stream()
+                .map(r -> ((Number) r).intValue())
+                .collect(Collectors.toSet());
     }
 }
