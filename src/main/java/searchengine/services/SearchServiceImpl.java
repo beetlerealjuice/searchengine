@@ -76,50 +76,64 @@ public class SearchServiceImpl implements SearchService {
                 .build();
     }
 
-    // Фильтруем леммы встречающиеся более чем на 75% страниц
+    // Фильтруем леммы по принадлежности к заданному сайту и встречающиеся более чем на 75% страниц
     public void filterLemmas(Set<String> lemmasFromQuery, String website) {
-
         Set<String> lemmasToRemove = new HashSet<>();
+        Integer siteId = (website != null) ? siteRepository.findByUrl(website).getId() : null;
 
         for (String lemma : lemmasFromQuery) {
             String sql =
                     "SELECT " +
-                    " l.lemma, " +
-                    " p.site_id, " +
-                    " COUNT(*) AS repetition_count, " +
-                    " (SELECT COUNT(*) FROM page WHERE site_id = p.site_id) AS total_pages_on_site " +
-                    "FROM " +
-                    " index_search AS isa " +
-                    "JOIN " +
-                    " page p ON isa.page_id = p.id " +
-                    "JOIN " +
-                    " lemma l ON isa.lemma_id = l.id " +
-                    "WHERE " +
-                    " l.lemma = :lemma " +
-                    (website != null ? "AND p.site_id = :siteId " : "") +
-                    "GROUP BY " +
-                    " p.site_id, l.lemma";
+                            " l.lemma, " +
+                            " p.site_id, " +
+                            " COUNT(*) AS repetition_count, " +
+                            " (SELECT COUNT(*) FROM page WHERE site_id = p.site_id) AS total_pages_on_site " +
+                            "FROM " +
+                            " index_search AS isa " +
+                            "JOIN " +
+                            " page p ON isa.page_id = p.id " +
+                            "JOIN " +
+                            " lemma l ON isa.lemma_id = l.id " +
+                            "WHERE " +
+                            " l.lemma = :lemma " +
+                            (website != null ? "AND p.site_id = :siteId " : "") +
+                            "GROUP BY " +
+                            " p.site_id, l.lemma";
 
             Query query = entityManager.createNativeQuery(sql);
             query.setParameter("lemma", lemma);
 
-            // Если поиск по заданному сайту, устанавливаем параметр siteId
-            if (website != null) {
-                query.setParameter("siteId", siteRepository.findByUrl(website).getId());
+            if (siteId != null) {
+                query.setParameter("siteId", siteId);
             }
 
             List<Object[]> results = query.getResultList();
 
+            // Удаляем лемму, если ее нет в результатах запроса
+            if (results.isEmpty()) {
+                lemmasToRemove.add(lemma);
+                continue;
+            }
+
             for (Object[] result : results) {
-                String foundLemma = (String) result[0];
+                Integer foundSiteId = (Integer) result[1];
+                System.out.println("foundSiteId: " + foundSiteId);
+                // Удаляем лемму, если она относится к другому siteId
+                if (siteId != null && !siteId.equals(foundSiteId)) {
+                    lemmasToRemove.add(lemma);
+                    continue;
+                }
+
                 Number repetitionCount = (Number) result[2];
+                System.out.println("repetitionCount: " + repetitionCount);
                 Number totalPagesOnSite = (Number) result[3];
+                System.out.println("totalPagesOnSite: " + totalPagesOnSite);
 
                 if (repetitionCount != null && totalPagesOnSite != null) {
                     double repetitionPercentage = repetitionCount.doubleValue() / totalPagesOnSite.doubleValue();
 
                     if (repetitionPercentage > REPETITION_PERCENTAGE) {
-                        lemmasToRemove.add(foundLemma);
+                        lemmasToRemove.add(lemma);
                     }
                 }
             }
@@ -127,6 +141,8 @@ public class SearchServiceImpl implements SearchService {
 
         lemmasFromQuery.removeAll(lemmasToRemove);
     }
+
+
 
     // Сортируем леммы в порядке увеличения частоты встречаемости
     public List<String> getSortedLemmasByFrequencyAsc(Set<String> lemmasFromQuery) {
