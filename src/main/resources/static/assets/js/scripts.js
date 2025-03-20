@@ -1612,7 +1612,7 @@ var API = function(){
                             .addClass(statusClass)
                             .text(site.status)
                             .before(site.name + ' - ' + site.url);
-                        var time = new Date(site.statusTime);
+                        var time = new Date(site.statusTime*1000);
                         $blockSiteExample.find('.Statistics-description')
                             .html('<div class="Statistics-option"><strong>Status time:</strong> ' +
                                 time.getDate() + '.' +

@@ -91,8 +91,16 @@ public class SearchServiceImpl implements SearchService {
         // Загружаем объекты Page по найденным идентификаторам
         List<Page> pages = pageRepository.findAllByIdIn(resultPageIds);
 
-
         System.out.println("Stop");
+
+        //todo проверить пагинацию
+
+        // Применяем пагинацию, если заданы offset и limit
+        int start = (offset != null && offset < pages.size()) ? offset : 0;
+        int end = (limit != null && start + limit < pages.size()) ? start + limit : pages.size();
+        List<Page> paginatedPages = pages.subList(start, end);
+
+
 
 
 

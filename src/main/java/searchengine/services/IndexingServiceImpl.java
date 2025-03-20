@@ -78,8 +78,9 @@ public class IndexingServiceImpl implements IndexingService {
         }
 
         for (int i = 0; i < siteList.size(); i++) {
+            int j = i;
             // Запускаем поток обхода сайта
-            IndexingThread indexingThread = new IndexingThread(siteList, i,
+            IndexingThread indexingThread = new IndexingThread(siteList, j,
                     siteRepository,
                     pageRepository,
                     lemmaRepository,

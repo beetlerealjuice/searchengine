@@ -13,6 +13,8 @@ import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,6 +27,14 @@ public class StatisticServiceImpl implements StatisticsService {
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
     private final LemmaRepository lemmaRepository;
+
+    public static final int OFFSET_HOURS;
+
+    static {
+        ZonedDateTime zonedDateTime = ZonedDateTime.now();
+        ZoneOffset zoneOffset = zonedDateTime.getOffset();
+        OFFSET_HOURS = zoneOffset.getTotalSeconds() / 3600;
+    }
 
     @Override
     public StatisticsResponse getStatistics() {
@@ -78,7 +88,7 @@ public class StatisticServiceImpl implements StatisticsService {
             detailedStatisticsItem.setName(site.getName());
             detailedStatisticsItem.setUrl(site.getUrl());
             detailedStatisticsItem.setStatus(site.getStatus().toString());
-            detailedStatisticsItem.setStatusTime(site.getStatusTime().getSecond());
+            detailedStatisticsItem.setStatusTime(site.getStatusTime().toEpochSecond(ZoneOffset.ofHours(+OFFSET_HOURS)));
             detailedStatisticsItem.setError(site.getLastError());
 
             int siteId = site.getId();
