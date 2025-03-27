@@ -229,7 +229,8 @@ public class SearchServiceImpl implements SearchService {
         Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
 
         for (Page page : pages) {
-            String[] lines = page.getContent().split("\n");
+            Document document = Jsoup.parse(page.getContent());
+            String[] lines = document.body().text().split("\n");
             for (int i = 0; i < lines.length; i++) {
                 Matcher matcher = pattern.matcher(lines[i]);
                 if (matcher.find()) {
