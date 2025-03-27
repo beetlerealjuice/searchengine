@@ -11,4 +11,6 @@ public interface PageRepository extends CrudRepository<Page, Integer> {
     Optional<Page> findByPath(String path);
 
     List<Page> findAllByIdIn(Set<Integer> ids);
+
+    Optional<Page> findById(Integer id);
 }
