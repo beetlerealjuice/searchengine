@@ -39,7 +39,7 @@ public class SearchServiceImpl implements SearchService {
 
     private final EntityManager entityManager;
 
-    private static final double REPETITION_PERCENTAGE = 0.75;
+    private static final double REPETITION_PERCENTAGE = 0.9;
 
     @Override
     @SneakyThrows
@@ -94,6 +94,9 @@ public class SearchServiceImpl implements SearchService {
 
         // Получаем множество слов (из страниц), соответствующих списку искомых лемм
         Set<String> matchingWords = extractMatchingWords(pages, sortedLemmas);
+
+        // Добавляем копии искомых слов с заглавной буквы
+        matchingWords = expandMatchingWords(matchingWords);
 
         // Получаем сниппеты
         List<PageSnippet> snippets = getSnippets(pages, matchingWords);
@@ -428,5 +431,16 @@ public class SearchServiceImpl implements SearchService {
             }
         }
         return result;
+    }
+
+    private Set<String> expandMatchingWords(Set<String> matchingWords) {
+        Set<String> expandedWords = new HashSet<>(matchingWords);
+        for (String word : matchingWords) {
+            if (!word.isEmpty()) {
+                String capitalizedWord = Character.toUpperCase(word.charAt(0)) + word.substring(1);
+                expandedWords.add(capitalizedWord);
+            }
+        }
+        return expandedWords;
     }
 }
