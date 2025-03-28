@@ -17,6 +17,7 @@ import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 import searchengine.utils.LemmaFinder;
 import searchengine.utils.LemmaFinderEn;
+import searchengine.utils.PageSnippet;
 
 import java.io.IOException;
 import java.util.*;
@@ -95,7 +96,7 @@ public class SearchServiceImpl implements SearchService {
         Set<String> matchingWords = extractMatchingWords(pages, sortedLemmas);
 
         // Получаем сниппеты
-        Map<String, Integer> snippets = getSnippet(pages, matchingWords);
+        List<PageSnippet> snippets = getSnippets(pages, matchingWords);
 
         List<SearchData> searchDataList = getSearchData(snippets, pageRepository);
 
@@ -110,28 +111,33 @@ public class SearchServiceImpl implements SearchService {
 
     }
 
-    private List<SearchData> getSearchData(Map<String, Integer> snippets, PageRepository pages) {
+    private List<SearchData> getSearchData(List<PageSnippet> snippets, PageRepository pages) {
         List<SearchData> searchDataList = new ArrayList<>();
 
-        for (Map.Entry<String, Integer> snippetEntry : snippets.entrySet()) {
+        for (PageSnippet pageSnippet : snippets) {
+            int pageId = pageSnippet.getPageId();
 
-            Integer pageId = snippetEntry.getValue();
             Page page = pages.findById(pageId).get();
 
-            SearchData searchData = new SearchData();
-            searchData.setSite(page.getSite().getUrl());
-            searchData.setSiteName(page.getSite().getName());
             Document document = Jsoup.parse(page.getContent());
             String title = document.title();
-            searchData.setTitle(title);
-            searchData.setUri(page.getPath());
-            searchData.setSnippet(snippetEntry.getKey());
-            searchDataList.add(searchData);
 
+            for (String snippet : pageSnippet.getSnippet()) {
+                SearchData searchData = new SearchData();
+                searchData.setSite(page.getSite().getUrl());
+                searchData.setSiteName(page.getSite().getName());
+                searchData.setTitle(title);
+                searchData.setUri(page.getPath());
+                searchData.setSnippet(snippet);
+
+                searchDataList.add(searchData);
+            }
         }
+
         System.out.println("Stop");
         return searchDataList;
     }
+
 
     // Метод для получения лемм из запроса (обрабатываем каждое слово отдельно)
     private Set<String> getLemmasFromQuery(String query) {
@@ -222,41 +228,8 @@ public class SearchServiceImpl implements SearchService {
         return word.matches("[a-z]+");
     }
 
-    // Метод для формирования сниппетов по страницам (выделение найденных лемм)
-    public static Map<String, Integer> getSnippet(List<Page> pages, Set<String> matchingWords) {
-        Map<String, Integer> snippets = new HashMap<>();
-        String regex = "\\b(" + String.join("|", matchingWords) + ")\\b";
-        Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+    // Метод для формирования сниппетов по страницам
 
-        for (Page page : pages) {
-            Document document = Jsoup.parse(page.getContent());
-            String[] lines = document.body().text().split("\n");
-            for (int i = 0; i < lines.length; i++) {
-                Matcher matcher = pattern.matcher(lines[i]);
-                if (matcher.find()) {
-                    String highlightedLine = matcher.replaceAll("<b>$1</b>");
-                    StringBuilder snippet = getStringBuilder(i, lines, highlightedLine);
-                    snippets.put(snippet.toString().trim(), page.getId());
-                }
-            }
-        }
-        return snippets;
-    }
-
-    private static StringBuilder getStringBuilder(int i, String[] lines, String highlightedLine) {
-        int start = Math.max(0, i - 1);
-        int end = Math.min(lines.length, i + 2);
-        StringBuilder snippet = new StringBuilder();
-        for (int j = start; j < end; j++) {
-            if (j == i) {
-                snippet.append(highlightedLine);
-            } else {
-                snippet.append(lines[j]);
-            }
-            snippet.append("\n");
-        }
-        return snippet;
-    }
 
     private SearchResponse getErrorSearchResponse(String error) {
         return SearchResponse.builder()
@@ -349,5 +322,35 @@ public class SearchServiceImpl implements SearchService {
         return results.stream()
                 .map(r -> ((Number) r).intValue())
                 .collect(Collectors.toSet());
+    }
+
+    private List<PageSnippet> getSnippets(List<Page> pages, Set<String> matchingWords) {
+
+        // Собираем регулярное выражение для искомых слов (регистронезависимо)
+        String regex = "\\b(" + String.join("|", matchingWords) + ")\\b";
+        Pattern wordPattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+
+        List<PageSnippet> snippets = new ArrayList<>();
+
+        for (Page page : pages) {
+            Document document = Jsoup.parse(page.getContent());
+            String plainText = document.body().text();
+
+            PageSnippet pageSnippet = new PageSnippet();
+
+            List<String> list = new ArrayList<>();
+            list.add("Первый сниппет");
+            list.add("Второй сниппет");
+            list.add("Третий сниппет");
+
+
+            pageSnippet.setSnippet(list);
+            pageSnippet.setPageId(page.getId());
+
+            snippets.add(pageSnippet);
+        }
+
+
+        return snippets;
     }
 }
