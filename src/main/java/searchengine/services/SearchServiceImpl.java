@@ -326,31 +326,107 @@ public class SearchServiceImpl implements SearchService {
 
     private List<PageSnippet> getSnippets(List<Page> pages, Set<String> matchingWords) {
 
+        List<PageSnippet> result = new ArrayList<>();
+        int maxSnippetLength = 150;
+
         // Собираем регулярное выражение для искомых слов (регистронезависимо)
         String regex = "\\b(" + String.join("|", matchingWords) + ")\\b";
         Pattern wordPattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
 
-        List<PageSnippet> snippets = new ArrayList<>();
+        // Регулярное выражение для разделения текста на предложения.
+        // Предполагается, что предложение заканчивается точкой, восклицательным или вопросительным знаком.
+        String sentenceDelimiter = "(?<=[.!?])\\s+";
 
         for (Page page : pages) {
-            Document document = Jsoup.parse(page.getContent());
+            String content = page.getContent();
+            if (content == null || content.isEmpty()) {
+                System.out.println("Пустое содержимое");
+                continue;
+            }
+            // Извлекаем текст через Jsoup (body().text() — получаем только видимый текст)
+            Document document = Jsoup.parse(content);
             String plainText = document.body().text();
+            // Нормализуем пробелы
+            plainText = plainText.replaceAll("\\s+", " ").trim();
+            if (plainText.isEmpty()) {
+                System.out.println("Пустой текст");
+                continue;
+            }
 
-            PageSnippet pageSnippet = new PageSnippet();
+            List<String> snippetsForPage = new ArrayList<>();
 
-            List<String> list = new ArrayList<>();
-            list.add("Первый сниппет");
-            list.add("Второй сниппет");
-            list.add("Третий сниппет");
+            // Если в тексте есть знаки окончания предложений, разбиваем на предложения.
+            boolean hasSentenceDelimiter = plainText.matches(".*[.!?].*");
+            if (hasSentenceDelimiter) {
+                String[] sentences = plainText.split(sentenceDelimiter);
 
+                // Для каждого предложения проверяем наличие хотя бы одного искомого слова.
+                for (String sentence : sentences) {
+                    String trimmedSentence = sentence.trim();
+                    Matcher m = wordPattern.matcher(trimmedSentence);
+                    if (!m.find()) {
+                        continue; // предложение не содержит искомых слов
+                    }
+                    String snippetCandidate;
+                    if (trimmedSentence.length() <= maxSnippetLength) {
+                        snippetCandidate = trimmedSentence;
+                    } else {
+                        // Если предложение слишком длинное, обрезаем до maxSnippetLength
+                        String truncated = trimmedSentence.substring(0, maxSnippetLength);
+                        // Пытаемся обрезать до конца предложения внутри фрагмента
+                        int lastDelimiter = Math.max(truncated.lastIndexOf("."),
+                                Math.max(truncated.lastIndexOf("!"), truncated.lastIndexOf("?")));
+                        if (lastDelimiter != -1) {
+                            truncated = truncated.substring(0, lastDelimiter + 1);
+                        } else {
+                            truncated += "...";
+                        }
+                        // Проверяем, что в обрезанном фрагменте всё ещё есть искомое слово
+                        if (wordPattern.matcher(truncated).find()) {
+                            snippetCandidate = truncated;
+                        } else {
+                            snippetCandidate = truncated; // оставляем как есть
+                            System.out.println("Совпадение за обрезкой");
+                        }
+                    }
+                    // Если сниппет не заканчивается знаком окончания предложения, добавляем многоточие
+                    if (!snippetCandidate.matches(".*[.!?]$")) {
+                        snippetCandidate += "...";
+                    }
+                    // Выделяем совпадения тегом <b>
+                    Matcher highlightMatcher = wordPattern.matcher(snippetCandidate);
+                    String highlightedSnippet = highlightMatcher.replaceAll("<b>$1</b>");
+                    snippetsForPage.add(highlightedSnippet);
+                }
+            } else {
+                // Если разделителей предложений нет, находим первое совпадение и берем фиксированный фрагмент.
+                Matcher m = wordPattern.matcher(plainText);
+                System.out.println("Текст без разделителей");
+                if (m.find()) {
+                    int matchStart = m.start();
+                    // Отступаем до начала слова (до пробела или начала строки)
+                    int snippetStart = matchStart;
+                    while (snippetStart > 0 && plainText.charAt(snippetStart - 1) != ' ') {
+                        snippetStart--;
+                    }
+                    int snippetEnd = Math.min(snippetStart + maxSnippetLength, plainText.length());
+                    String snippetCandidate = plainText.substring(snippetStart, snippetEnd).trim();
+                    if (snippetEnd < plainText.length()) {
+                        snippetCandidate += "...";
+                    }
+                    Matcher highlightMatcher = wordPattern.matcher(snippetCandidate);
+                    String highlightedSnippet = highlightMatcher.replaceAll("<b>$1</b>");
+                    snippetsForPage.add(highlightedSnippet);
+                }
+            }
 
-            pageSnippet.setSnippet(list);
-            pageSnippet.setPageId(page.getId());
-
-            snippets.add(pageSnippet);
+            if (!snippetsForPage.isEmpty()) {
+                PageSnippet pageSnippet = new PageSnippet();
+                pageSnippet.setPageId(page.getId());
+                pageSnippet.setSnippet(snippetsForPage);
+                result.add(pageSnippet);
+            }
         }
-
-
-        return snippets;
+        return result;
     }
 }
