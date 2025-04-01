@@ -8,6 +8,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 import searchengine.dto.SearchResponse;
+import searchengine.model.IndexSearch;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
 import searchengine.model.SearchData;
@@ -101,7 +102,16 @@ public class SearchServiceImpl implements SearchService {
         // Получаем сниппеты
         List<PageSnippet> snippets = getSnippets(pages, matchingWords);
 
-        List<SearchData> searchDataList = getSearchData(snippets, pageRepository);
+        List<Lemma> lemmas = lemmaRepository.findByLemmaIn(sortedLemmas);
+
+        // Получаем относительную релевантность страниц
+        Map<Integer, Float> relativeRelevance = getRelativeRelevance(lemmas);
+
+        System.out.println("Stop");
+
+        List<SearchData> searchDataList = getSearchData(snippets, pageRepository, relativeRelevance);
+
+        System.out.println("Stop");
 
         return SearchResponse.builder()
                 .result(true)
@@ -114,7 +124,7 @@ public class SearchServiceImpl implements SearchService {
 
     }
 
-    private List<SearchData> getSearchData(List<PageSnippet> snippets, PageRepository pages) {
+    private List<SearchData> getSearchData(List<PageSnippet> snippets, PageRepository pages, Map<Integer, Float> relevance) {
         List<SearchData> searchDataList = new ArrayList<>();
 
         for (PageSnippet pageSnippet : snippets) {
@@ -132,13 +142,18 @@ public class SearchServiceImpl implements SearchService {
                 searchData.setTitle(title);
                 searchData.setUri(page.getPath());
                 searchData.setSnippet(snippet);
-
+                searchData.setRelevance(relevance.get(pageId));
                 searchDataList.add(searchData);
             }
         }
 
+        // Сортируем поисковую выдачу по относительной релевантности
+        List<SearchData> sortedList = searchDataList.stream()
+                .sorted(Comparator.comparingDouble(SearchData::getRelevance).reversed())
+                .collect(Collectors.toList());
+
         System.out.println("Stop");
-        return searchDataList;
+        return sortedList;
     }
 
 
@@ -388,8 +403,28 @@ public class SearchServiceImpl implements SearchService {
                         if (wordPattern.matcher(truncated).find()) {
                             snippetCandidate = truncated;
                         } else {
-                            snippetCandidate = truncated; // оставляем как есть
-                            System.out.println("Совпадение за обрезкой");
+                            // Искомое слово не найдено в обрезанном фрагменте.
+                            // Ищем в полном предложении, начиная с позиции maxSnippetLength
+                            Matcher matcherInFull = wordPattern.matcher(trimmedSentence);
+                            if (matcherInFull.find(maxSnippetLength)) {
+                                int matchIndex = matcherInFull.start();
+                                // Формируем сниппет, начиная с "..." и до конца предложения
+                                String tailSnippet = trimmedSentence.substring(matchIndex);
+                                snippetCandidate = "..." + tailSnippet;
+                                // Если полученный сниппет всё ещё длиннее maxSnippetLength, обрезаем его
+                                if (snippetCandidate.length() > maxSnippetLength) {
+                                    snippetCandidate = snippetCandidate.substring(0, maxSnippetLength);
+                                    // Если после обрезки сниппет не заканчивается знаком конца предложения, добавляем многоточие
+                                    if (!snippetCandidate.matches(".*[.!?]$")) {
+                                        snippetCandidate += "...";
+                                    }
+                                }
+                            } else {
+                                // Если искомое слово не найдено даже в полной версии предложения,
+                                // оставляем первоначальный фрагмент (с выводом отладки)
+                                snippetCandidate = truncated;
+                                System.out.println("Совпадение за обрезкой");
+                            }
                         }
                     }
                     // Если сниппет не заканчивается знаком окончания предложения, добавляем многоточие
@@ -442,5 +477,36 @@ public class SearchServiceImpl implements SearchService {
             }
         }
         return expandedWords;
+    }
+
+    private Map<Integer, Float> getRelativeRelevance(List<Lemma> foundLemmas) {
+        Map<Integer, Float> pageRank = new HashMap<>();
+
+        Iterable<IndexSearch> indexSearches = indexSearchRepository.findAll();
+        for (Lemma lemma : foundLemmas) {
+            for (IndexSearch indexSearch : indexSearches) {
+                if (indexSearch.getLemma().getId() != lemma.getId()) continue;
+
+                int idPage = indexSearch.getPage().getId();
+                float rank1 = indexSearch.getRank();
+
+                if (pageRank.containsKey(idPage)) {
+                    float newRank = pageRank.get(idPage) + rank1;
+                    pageRank.replace(idPage, newRank);
+                } else {
+                    pageRank.put(idPage, rank1);
+                }
+            }
+        }
+
+        Map<Integer, Float> relativeRelevant = new HashMap<>();
+        float maxValue = Collections.max(pageRank.values());
+
+        for (Map.Entry<Integer, Float> entry : pageRank.entrySet()) {
+            float relevantValue = entry.getValue() / maxValue;
+            relativeRelevant.put(entry.getKey(), relevantValue);
+        }
+
+        return relativeRelevant;
     }
 }

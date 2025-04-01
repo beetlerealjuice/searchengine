@@ -11,6 +11,8 @@ import java.util.Set;
 public interface LemmaRepository extends CrudRepository<Lemma, Integer> {
     Optional<Lemma> findFirstByLemma(String lemma);
 
+    List<Lemma> findByLemmaIn(List<String> lemmas);
+
     @Query("SELECT l FROM Lemma l WHERE l.lemma IN :lemmas ORDER BY l.frequency ASC")
     List<Lemma> findAndSortByFrequencyAsc(Set<String> lemmas);
 }
