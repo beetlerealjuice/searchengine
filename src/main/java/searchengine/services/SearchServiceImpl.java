@@ -105,7 +105,7 @@ public class SearchServiceImpl implements SearchService {
         List<Lemma> lemmas = lemmaRepository.findByLemmaIn(sortedLemmas);
 
         // Получаем относительную релевантность страниц
-        Map<Integer, Float> relativeRelevance = getRelativeRelevance(lemmas);
+        Map<Integer, Float> relativeRelevance = getRelativeRelevance(lemmas, pages);
 
         System.out.println("Stop");
 
@@ -479,34 +479,112 @@ public class SearchServiceImpl implements SearchService {
         return expandedWords;
     }
 
-    private Map<Integer, Float> getRelativeRelevance(List<Lemma> foundLemmas) {
+    private Map<Integer, Float> getRelativeRelevance(List<Lemma> foundLemmas, List<Page> pages) throws IOException {
         Map<Integer, Float> pageRank = new HashMap<>();
+        Map<Integer, String> pageContent = new HashMap<>();  // Мапа для хранения содержимого страниц
 
-        Iterable<IndexSearch> indexSearches = indexSearchRepository.findAll();
-        for (Lemma lemma : foundLemmas) {
-            for (IndexSearch indexSearch : indexSearches) {
-                if (indexSearch.getLemma().getId() != lemma.getId()) continue;
+        // Получаем список ID лемм
+        List<Integer> lemmaIds = foundLemmas.stream()
+                .map(Lemma::getId)
+                .collect(Collectors.toList());
+        // Получаем список ID страниц
+        List<Integer> pageIds = pages.stream()
+                .map(Page::getId)
+                .toList();
 
-                int idPage = indexSearch.getPage().getId();
-                float rank1 = indexSearch.getRank();
+        // Получаем список лемм
+        List<String> lemmaList = foundLemmas.stream()
+                .map(Lemma::getLemma)
+                .toList();
 
-                if (pageRank.containsKey(idPage)) {
-                    float newRank = pageRank.get(idPage) + rank1;
-                    pageRank.replace(idPage, newRank);
-                } else {
-                    pageRank.put(idPage, rank1);
+        if (lemmaIds.isEmpty()) {
+            return pageRank; // Если список лемм пуст, сразу возвращаем пустую карту
+        }
+
+        // SQL-запрос для получения суммы рангов и содержимого страниц
+        String sql = "SELECT isa.page_id, SUM(isa.rank) AS total_rank, p.content " +
+                "FROM index_search isa " +
+                "JOIN page p ON p.id = isa.page_id " +
+                "WHERE isa.lemma_id IN (:lemmaIds) " +
+                "AND p.id IN (:pageIds) " +
+                "GROUP BY isa.page_id, p.content";
+
+        // Создание и выполнение запроса
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("lemmaIds", lemmaIds);
+        query.setParameter("pageIds", pageIds);
+        List<Object[]> results = query.getResultList();
+
+        // Обрабатываем результаты запроса
+        for (Object[] result : results) {
+            int pageId = ((Number) result[0]).intValue();
+            float rank = ((Number) result[1]).floatValue();
+            String content = (String) result[2];  // Содержимое страницы
+
+            content = Jsoup.parse(content).body().text();
+
+            // Сохраняем результаты
+            pageRank.put(pageId, rank);
+            pageContent.put(pageId, content);
+        }
+
+        LemmaFinder lemmaFinderRu = LemmaFinder.getInstance();
+        LemmaFinderEn lemmaFinderEn = LemmaFinderEn.getInstance();
+
+        Map<Integer, Map<Integer, String>> lemmaPositionForPage = new HashMap<>();
+
+        for (Map.Entry<Integer, String> entry : pageContent.entrySet()) {
+            int pageId = entry.getKey();
+            String content = entry.getValue();
+
+            // Разбиваем контент на слова и нормализуем
+            String[] words = content.split("\\s+");
+            Map <Integer, String> positionOfLemma = new HashMap<>();
+
+            for (String word : words) {
+
+                String normalizedWord = normalizeWord(word);
+                if (isRussian(normalizedWord)) {
+                    String lemma = lemmaFinderRu.getLemma(normalizedWord);
+                    if (lemmaList.contains(lemma)) {
+                        int index = content.indexOf(word);
+                        while (index != -1) {
+                            positionOfLemma.put(index, lemma);
+                            index = content.indexOf(word, index + 1);
+
+                        }
+                    }
+                }
+                if (isEnglish(normalizedWord)) {
+                    String lemma = lemmaFinderEn.getLemma(normalizedWord);
+                    if (lemmaList.contains(lemma)) {
+                        int index = content.indexOf(word);
+                        while (index != -1) {
+                            positionOfLemma.put(index, lemma);
+                            index = content.indexOf(word, index + 1);
+
+                        }
+                    }
                 }
             }
+            lemmaPositionForPage.put(pageId, positionOfLemma);
+
         }
 
-        Map<Integer, Float> relativeRelevant = new HashMap<>();
-        float maxValue = Collections.max(pageRank.values());
 
-        for (Map.Entry<Integer, Float> entry : pageRank.entrySet()) {
-            float relevantValue = entry.getValue() / maxValue;
-            relativeRelevant.put(entry.getKey(), relevantValue);
+
+
+        System.out.println("Stop");
+        // Нормализация значений рангов
+        if (!pageRank.isEmpty()) {
+            float maxValue = Collections.max(pageRank.values());
+            pageRank.replaceAll((k, v) -> v / maxValue);
         }
 
-        return relativeRelevant;
+        // Если нужно вернуть содержимое страниц, это можно сделать
+        // например, через pageContent или вернуть его как дополнительный результат
+
+        return pageRank;  // Возвращаем нормализованные ранги
     }
+
 }

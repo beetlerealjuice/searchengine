@@ -99,6 +99,14 @@ public class LemmaFinderEn {
         }
         return true;
     }
+    public String getLemma(String word) {
+        if (word.isBlank()) {
+            return "";
+        }
+        List<String> normalForms = luceneMorphology.getNormalForms(word);
+        return normalForms.isEmpty() ? word : normalForms.get(0);
+    }
+
 }
 
 
