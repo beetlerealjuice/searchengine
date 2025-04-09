@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.util.*;
 
 public class LemmaFinderEn {
-    private final LuceneMorphology luceneMorphology;
+    public final LuceneMorphology luceneMorphology;
     private static final String WORD_TYPE_REGEX = "\\W\\w&&[^a-zA-Z\\s]";
     private static final String[] particlesNames = new String[]{"PREP", "CONJ", "ARTICLE"};
 
@@ -70,7 +70,7 @@ public class LemmaFinderEn {
         return lemmaSet;
     }
 
-    private boolean anyWordBaseBelongToParticle(List<String> wordBaseForms) {
+    public boolean anyWordBaseBelongToParticle(List<String> wordBaseForms) {
         return wordBaseForms.stream().anyMatch(this::hasParticleProperty);
     }
 

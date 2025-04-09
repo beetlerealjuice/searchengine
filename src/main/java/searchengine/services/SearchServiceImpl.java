@@ -483,7 +483,8 @@ public class SearchServiceImpl implements SearchService {
 
             // Если найдено точное совпадение лемм, идущих друг за другом в поисковом запросе,
             // то присвоить данной странице максимальную релевантность
-            if (lemmaList.size() >= 3 && hasConsecutiveWords(positionsOfLemmas)) {
+            if (lemmaList.size() < 3) continue;
+            if (hasConsecutiveWords(positionsOfLemmas, content, lemmaFinderRu, lemmaFinderEn)) {
                 System.out.println("Нашел фразу");
                 pageRank.put(
                         pageId,
@@ -540,7 +541,8 @@ public class SearchServiceImpl implements SearchService {
     }
 
     // Определяем есть ли последовательности найденных форм лемм
-    private boolean hasConsecutiveWords(Map<Integer, String> positionsOfLemmas) {
+    private boolean hasConsecutiveWords(Map<Integer, String> positionsOfLemmas, String content,
+                                        LemmaFinder lemmaFinder, LemmaFinderEn lemmaFinderEn) {
         List<Integer> positions = new ArrayList<>(positionsOfLemmas.keySet());
         Collections.sort(positions);
 
@@ -550,20 +552,49 @@ public class SearchServiceImpl implements SearchService {
             int prevPos = positions.get(i - 1);
             int currPos = positions.get(i);
 
-            String prevWord = positionsOfLemmas.get(prevPos);
-            int expectedNextStart = prevPos + prevWord.length() + 1;
+            int begin = prevPos + positionsOfLemmas.get(prevPos).length();
+            int end = currPos;
 
-            if (currPos == expectedNextStart) {
+            String betweenText = "";
+
+            if (begin < end) {
+                betweenText = content.substring(begin, end).trim();
+            } else continue;
+
+            if (betweenText.isBlank()) {
+                // Если только пробелы между словами — считаем подряд
                 consecutiveCount++;
-                if (consecutiveCount >= 3) {
-                    return true;
-                }
             } else {
-                consecutiveCount = 1;
+                // Определим язык между слов (по первому символу, можно заменить на точную логику)
+
+                String[] wordsBetween = betweenText.split("\\s+");
+                boolean allParticles = true;
+
+                for (String word : wordsBetween) {
+                    if (word.isBlank()) continue;
+
+                    word = TextUtils.normalizeWord(word);
+                    boolean isRussian = TextUtils.isRussian(word);
+                    boolean isParticle = isRussian
+                            ? lemmaFinder.anyWordBaseBelongToParticle(lemmaFinder.luceneMorphology.getMorphInfo(word))
+                            : lemmaFinderEn.anyWordBaseBelongToParticle(lemmaFinderEn.luceneMorphology.getMorphInfo(word));
+                    if (!isParticle) {
+                        allParticles = false;
+                        break;
+                    }
+                }
+
+                if (allParticles) {
+                    consecutiveCount++;
+                } else {
+                    consecutiveCount = 1;
+                }
+            }
+
+            if (consecutiveCount >= 3) {
+                return true;
             }
         }
-
         return false;
     }
-
 }
