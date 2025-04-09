@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
+import org.apache.lucene.morphology.WrongCharaterException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
@@ -565,7 +566,6 @@ public class SearchServiceImpl implements SearchService {
                 // Если только пробелы между словами — считаем подряд
                 consecutiveCount++;
             } else {
-                // Определим язык между слов (по первому символу, можно заменить на точную логику)
 
                 String[] wordsBetween = betweenText.split("\\s+");
                 boolean allParticles = true;
@@ -574,13 +574,20 @@ public class SearchServiceImpl implements SearchService {
                     if (word.isBlank()) continue;
 
                     word = TextUtils.normalizeWord(word);
-                    boolean isRussian = TextUtils.isRussian(word);
-                    boolean isParticle = isRussian
-                            ? lemmaFinder.anyWordBaseBelongToParticle(lemmaFinder.luceneMorphology.getMorphInfo(word))
-                            : lemmaFinderEn.anyWordBaseBelongToParticle(lemmaFinderEn.luceneMorphology.getMorphInfo(word));
-                    if (!isParticle) {
-                        allParticles = false;
-                        break;
+                    if (word.isBlank()) continue;
+
+                    try {
+                        boolean isRussian = TextUtils.isRussian(word);
+                        boolean isParticle = isRussian
+                                ? lemmaFinder.anyWordBaseBelongToParticle(lemmaFinder.luceneMorphology.getMorphInfo(word))
+                                : lemmaFinderEn.anyWordBaseBelongToParticle(lemmaFinderEn.luceneMorphology.getMorphInfo(word));
+
+                        if (!isParticle) {
+                            allParticles = false;
+                            break;
+                        }
+                    } catch (ArrayIndexOutOfBoundsException | WrongCharaterException e) {
+                        System.out.println("Ошибка при анализе слова: " + word + " — " + e.getClass().getSimpleName());
                     }
                 }
 
