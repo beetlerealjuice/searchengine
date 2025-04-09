@@ -11,13 +11,13 @@ import searchengine.dto.SearchResponse;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
 import searchengine.model.SearchData;
-import searchengine.repository.IndexSearchRepository;
 import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 import searchengine.utils.LemmaFinder;
 import searchengine.utils.LemmaFinderEn;
 import searchengine.utils.PageSnippet;
+import searchengine.utils.TextUtils;
 
 import java.io.IOException;
 import java.util.*;
@@ -34,8 +34,6 @@ public class SearchServiceImpl implements SearchService {
     private final PageRepository pageRepository;
 
     private final LemmaRepository lemmaRepository;
-
-    private final IndexSearchRepository indexSearchRepository;
 
     private final EntityManager entityManager;
 
@@ -106,7 +104,7 @@ public class SearchServiceImpl implements SearchService {
         // Получаем относительную релевантность страниц
         Map<Integer, Float> relativeRelevance = getRelativeRelevance(lemmas, pages);
 
-
+        // Формируем поисковую выдачу
         List<SearchData> searchDataList = getSearchData(snippets, pageRepository, relativeRelevance);
 
 
@@ -170,7 +168,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         for (String word : words) {
-            String normalizedWord = normalizeWord(word);
+            String normalizedWord = TextUtils.normalizeWord(word);
             if (normalizedWord.isEmpty()) {
                 continue;
             }
@@ -183,12 +181,12 @@ public class SearchServiceImpl implements SearchService {
     // Метод для получения множества лемм для одного слова
     private Set<String> getLemmasForWord(String normalizedWord, LemmaFinder russianMorph, LemmaFinderEn englishMorph) {
         Set<String> lemmas = new HashSet<>();
-        if (isRussian(normalizedWord)) {
+        if (TextUtils.isRussian(normalizedWord)) {
             lemmas.addAll(russianMorph.getLemmaSet(normalizedWord));
-        } else if (isEnglish(normalizedWord)) {
+        } else if (TextUtils.isEnglish(normalizedWord)) {
             lemmas.addAll(englishMorph.getLemmaSet(normalizedWord));
         } else {
-            // Если слово содержит смешанные символы, пробуем оба варианта
+            // Если слово содержит смешанные символы, используем оба варианта
             lemmas.addAll(russianMorph.getLemmaSet(normalizedWord));
             lemmas.addAll(englishMorph.getLemmaSet(normalizedWord));
         }
@@ -212,7 +210,7 @@ public class SearchServiceImpl implements SearchService {
             String[] words = plainText.split("\\s+");
 
             for (String word : words) {
-                String normalizedWord = normalizeWord(word);
+                String normalizedWord = TextUtils.normalizeWord(word);
                 if (normalizedWord.isEmpty()) {
                     continue;
                 }
@@ -227,24 +225,6 @@ public class SearchServiceImpl implements SearchService {
         }
         return resultSet;
     }
-
-    // Вспомогательный метод для нормализации слова (оставляем только буквы, переводим в нижний регистр)
-    private String normalizeWord(String word) {
-        return word.toLowerCase().replaceAll("[^а-яёa-z]", "");
-    }
-
-    // Вспомогательный метод для определения, состоит ли слово только из русских букв
-    private boolean isRussian(String word) {
-        return word.matches("[а-яё]+");
-    }
-
-    // Вспомогательный метод для определения, состоит ли слово только из английских букв
-    private boolean isEnglish(String word) {
-        return word.matches("[a-z]+");
-    }
-
-    // Метод для формирования сниппетов по страницам
-
 
     private SearchResponse getErrorSearchResponse(String error) {
         return SearchResponse.builder()
@@ -384,15 +364,7 @@ public class SearchServiceImpl implements SearchService {
                         snippetCandidate = trimmedSentence;
                     } else {
                         // Если предложение слишком длинное, обрезаем до maxSnippetLength
-                        String truncated = trimmedSentence.substring(0, maxSnippetLength);
-                        // Пытаемся обрезать до конца предложения внутри фрагмента
-                        int lastDelimiter = Math.max(truncated.lastIndexOf("."),
-                                Math.max(truncated.lastIndexOf("!"), truncated.lastIndexOf("?")));
-                        if (lastDelimiter != -1) {
-                            truncated = truncated.substring(0, lastDelimiter + 1);
-                        } else {
-                            truncated += "...";
-                        }
+                        String truncated = getString(trimmedSentence, maxSnippetLength);
                         // Проверяем, что в обрезанном фрагменте всё ещё есть искомое слово
                         if (wordPattern.matcher(truncated).find()) {
                             snippetCandidate = truncated;
@@ -435,17 +407,7 @@ public class SearchServiceImpl implements SearchService {
                 Matcher m = wordPattern.matcher(plainText);
                 System.out.println("Текст без разделителей");
                 if (m.find()) {
-                    int matchStart = m.start();
-                    // Отступаем до начала слова (до пробела или начала строки)
-                    int snippetStart = matchStart;
-                    while (snippetStart > 0 && plainText.charAt(snippetStart - 1) != ' ') {
-                        snippetStart--;
-                    }
-                    int snippetEnd = Math.min(snippetStart + maxSnippetLength, plainText.length());
-                    String snippetCandidate = plainText.substring(snippetStart, snippetEnd).trim();
-                    if (snippetEnd < plainText.length()) {
-                        snippetCandidate += "...";
-                    }
+                    String snippetCandidate = getString(m, plainText, maxSnippetLength);
                     Matcher highlightMatcher = wordPattern.matcher(snippetCandidate);
                     String highlightedSnippet = highlightMatcher.replaceAll("<b>$1</b>");
                     snippetsForPage.add(highlightedSnippet);
@@ -462,6 +424,34 @@ public class SearchServiceImpl implements SearchService {
         return result;
     }
 
+    private static String getString(Matcher m, String plainText, int maxSnippetLength) {
+        int matchStart = m.start();
+        // Отступаем до начала слова (до пробела или начала строки)
+        int snippetStart = matchStart;
+        while (snippetStart > 0 && plainText.charAt(snippetStart - 1) != ' ') {
+            snippetStart--;
+        }
+        int snippetEnd = Math.min(snippetStart + maxSnippetLength, plainText.length());
+        String snippetCandidate = plainText.substring(snippetStart, snippetEnd).trim();
+        if (snippetEnd < plainText.length()) {
+            snippetCandidate += "...";
+        }
+        return snippetCandidate;
+    }
+
+    private static String getString(String trimmedSentence, int maxSnippetLength) {
+        String truncated = trimmedSentence.substring(0, maxSnippetLength);
+        // Пытаемся обрезать до конца предложения внутри фрагмента
+        int lastDelimiter = Math.max(truncated.lastIndexOf("."),
+                Math.max(truncated.lastIndexOf("!"), truncated.lastIndexOf("?")));
+        if (lastDelimiter != -1) {
+            truncated = truncated.substring(0, lastDelimiter + 1);
+        } else {
+            truncated += "...";
+        }
+        return truncated;
+    }
+
     private Set<String> expandMatchingWords(Set<String> matchingWords) {
         Set<String> expandedWords = new HashSet<>(matchingWords);
         for (String word : matchingWords) {
@@ -475,7 +465,7 @@ public class SearchServiceImpl implements SearchService {
 
     private Map<Integer, Float> getRelativeRelevance(List<Lemma> foundLemmas, List<Page> pages) throws IOException {
         Map<Integer, Float> pageRank = new HashMap<>();
-        Map<Integer, String> pageContent = new HashMap<>();  // Мапа для хранения содержимого страниц
+        Map<Integer, String> pageContent = new HashMap<>();
 
         // Получаем список ID лемм
         List<Integer> lemmaIds = foundLemmas.stream()
@@ -522,7 +512,7 @@ public class SearchServiceImpl implements SearchService {
             pageContent.put(pageId, content);
         }
 
-        Map<Integer, Map<Integer, String>> lemmasPositionsForPage = new HashMap<>();
+        //Map<Integer, Map<Integer, String>> lemmasPositionsForPage = new HashMap<>();
 
         LemmaFinder lemmaFinderRu = LemmaFinder.getInstance();
         LemmaFinderEn lemmaFinderEn = LemmaFinderEn.getInstance();
@@ -533,23 +523,22 @@ public class SearchServiceImpl implements SearchService {
 
             Map <Integer, String> positionsOfLemmas = lemmasPositions(content, lemmaFinderRu, lemmaFinderEn, lemmaList);
 
-            if (hasConsecutiveWords(positionsOfLemmas)) {
+            // Если найдено точное совпадение лемм, идущих друг за другом в поисковом запросе,
+            // то присвоить данной странице максимальную релевантность
+            if (lemmaList.size() >= 3 && hasConsecutiveWords(positionsOfLemmas)) {
                 System.out.println("Нашел фразу");
+                pageRank.put(
+                        pageId,
+                        pageRank.values().stream()
+                                .max(Float::compare)
+                                .orElse(0f) + 1
+                );
             }
-
-            lemmasPositionsForPage.put(pageId, positionsOfLemmas);
-
+            //lemmasPositionsForPage.put(pageId, positionsOfLemmas);
         }
 
-
-
-
-
-
-
-
         System.out.println("Stop");
-        // Нормализация значений рангов
+        // Нормализация значений рангов (от 0 до 1)
         if (!pageRank.isEmpty()) {
             float max = Collections.max(pageRank.values());
             for (Map.Entry<Integer, Float> entry : pageRank.entrySet()) {
@@ -557,11 +546,11 @@ public class SearchServiceImpl implements SearchService {
             }
         }
 
-        return pageRank;  // Возвращаем нормализованные ранги
+        return pageRank;  // Возвращаем нормализованные ранги страниц
     }
 
     // Определяем позиции найденных лемм в тексте
-    public HashMap<Integer, String> lemmasPositions(String content, LemmaFinder lemmaFinderRu,
+    private HashMap<Integer, String> lemmasPositions(String content, LemmaFinder lemmaFinderRu,
                                                     LemmaFinderEn lemmaFinderEn, List<String> lemmaList) {
         HashMap<Integer, String> positionOfLemma = new HashMap<>();
 
@@ -569,10 +558,10 @@ public class SearchServiceImpl implements SearchService {
         String[] words = content.split("\s+");
 
         for (String word : words) {
-            String normalizedWord = normalizeWord(word);
+            String normalizedWord = TextUtils.normalizeWord(word);
             int index = content.indexOf(word);
 
-            if (isRussian(normalizedWord)) {
+            if (TextUtils.isRussian(normalizedWord)) {
                 String lemma = lemmaFinderRu.getLemma(normalizedWord);
                 if (lemmaList.contains(lemma)) {
                     while (index != -1) {
@@ -580,7 +569,7 @@ public class SearchServiceImpl implements SearchService {
                         index = content.indexOf(word, index + 1);
                     }
                 }
-            } else if (isEnglish(normalizedWord)) {
+            } else if (TextUtils.isEnglish(normalizedWord)) {
                 String lemma = lemmaFinderEn.getLemma(normalizedWord);
                 if (lemmaList.contains(lemma)) {
                     while (index != -1) {
@@ -593,7 +582,7 @@ public class SearchServiceImpl implements SearchService {
         return positionOfLemma;
     }
 
-    // Определение последовательности слов
+    // Определяем есть ли последовательности найденных форм лемм
     private boolean hasConsecutiveWords(Map<Integer, String> positionsOfLemmas) {
         List<Integer> positions = new ArrayList<>(positionsOfLemmas.keySet());
         Collections.sort(positions);
