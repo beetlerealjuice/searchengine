@@ -20,4 +20,10 @@ public class TextUtils {
     public static boolean isEnglish(String word) {
         return word.matches("[a-z]+");
     }
+
+    // Подсчет количества открывающихся тегов <b>
+    public static int countBoldTags(String snippet) {
+        // Подсчёт количества открывающих тегов <b>
+        return snippet == null ? 0 : snippet.split("<b>", -1).length - 1;
+    }
 }

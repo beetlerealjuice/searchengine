@@ -144,12 +144,20 @@ public class SearchServiceImpl implements SearchService {
 
         // Сортируем поисковую выдачу по относительной релевантности
         List<SearchData> sortedList = searchDataList.stream()
-                .sorted(Comparator.comparingDouble(SearchData::getRelevance).reversed())
+                .sorted(Comparator
+                        .comparingDouble(SearchData::getRelevance).reversed()
+                        .thenComparing(
+                                Comparator.comparingInt((SearchData sd) -> TextUtils.countBoldTags(sd.getSnippet())).reversed()
+                        )
+                )
                 .collect(Collectors.toList());
+
 
         System.out.println("Stop");
         return sortedList;
     }
+
+
 
 
     // Метод для получения лемм из запроса (обрабатываем каждое слово отдельно)
