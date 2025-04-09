@@ -8,7 +8,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 import searchengine.dto.SearchResponse;
-import searchengine.model.IndexSearch;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
 import searchengine.model.SearchData;
@@ -107,11 +106,9 @@ public class SearchServiceImpl implements SearchService {
         // Получаем относительную релевантность страниц
         Map<Integer, Float> relativeRelevance = getRelativeRelevance(lemmas, pages);
 
-        System.out.println("Stop");
 
         List<SearchData> searchDataList = getSearchData(snippets, pageRepository, relativeRelevance);
 
-        System.out.println("Stop");
 
         return SearchResponse.builder()
                 .result(true)
@@ -295,15 +292,12 @@ public class SearchServiceImpl implements SearchService {
 
             for (Object[] result : results) {
                 Integer foundSiteId = (Integer) result[1];
-                System.out.println("foundSiteId: " + foundSiteId);
                 if (siteId != null && !siteId.equals(foundSiteId)) {
                     lemmasToRemove.add(lemma);
                     continue;
                 }
                 Number repetitionCount = (Number) result[2];
-                System.out.println("repetitionCount: " + repetitionCount);
                 Number totalPagesOnSite = (Number) result[3];
-                System.out.println("totalPagesOnSite: " + totalPagesOnSite);
                 if (repetitionCount != null && totalPagesOnSite != null) {
                     double repetitionPercentage = repetitionCount.doubleValue() / totalPagesOnSite.doubleValue();
                     if (repetitionPercentage > REPETITION_PERCENTAGE) {
@@ -528,48 +522,28 @@ public class SearchServiceImpl implements SearchService {
             pageContent.put(pageId, content);
         }
 
+        Map<Integer, Map<Integer, String>> lemmasPositionsForPage = new HashMap<>();
+
         LemmaFinder lemmaFinderRu = LemmaFinder.getInstance();
         LemmaFinderEn lemmaFinderEn = LemmaFinderEn.getInstance();
-
-        Map<Integer, Map<Integer, String>> lemmaPositionForPage = new HashMap<>();
 
         for (Map.Entry<Integer, String> entry : pageContent.entrySet()) {
             int pageId = entry.getKey();
             String content = entry.getValue();
 
-            // Разбиваем контент на слова и нормализуем
-            String[] words = content.split("\\s+");
-            Map <Integer, String> positionOfLemma = new HashMap<>();
+            Map <Integer, String> positionsOfLemmas = lemmasPositions(content, lemmaFinderRu, lemmaFinderEn, lemmaList);
 
-            for (String word : words) {
-
-                String normalizedWord = normalizeWord(word);
-                if (isRussian(normalizedWord)) {
-                    String lemma = lemmaFinderRu.getLemma(normalizedWord);
-                    if (lemmaList.contains(lemma)) {
-                        int index = content.indexOf(word);
-                        while (index != -1) {
-                            positionOfLemma.put(index, lemma);
-                            index = content.indexOf(word, index + 1);
-
-                        }
-                    }
-                }
-                if (isEnglish(normalizedWord)) {
-                    String lemma = lemmaFinderEn.getLemma(normalizedWord);
-                    if (lemmaList.contains(lemma)) {
-                        int index = content.indexOf(word);
-                        while (index != -1) {
-                            positionOfLemma.put(index, lemma);
-                            index = content.indexOf(word, index + 1);
-
-                        }
-                    }
-                }
+            if (hasConsecutiveWords(positionsOfLemmas)) {
+                System.out.println("Нашел фразу");
             }
-            lemmaPositionForPage.put(pageId, positionOfLemma);
+
+            lemmasPositionsForPage.put(pageId, positionsOfLemmas);
 
         }
+
+
+
+
 
 
 
@@ -577,14 +551,73 @@ public class SearchServiceImpl implements SearchService {
         System.out.println("Stop");
         // Нормализация значений рангов
         if (!pageRank.isEmpty()) {
-            float maxValue = Collections.max(pageRank.values());
-            pageRank.replaceAll((k, v) -> v / maxValue);
+            float max = Collections.max(pageRank.values());
+            for (Map.Entry<Integer, Float> entry : pageRank.entrySet()) {
+                entry.setValue(entry.getValue() / max);
+            }
         }
 
-        // Если нужно вернуть содержимое страниц, это можно сделать
-        // например, через pageContent или вернуть его как дополнительный результат
-
         return pageRank;  // Возвращаем нормализованные ранги
+    }
+
+    // Определяем позиции найденных лемм в тексте
+    public HashMap<Integer, String> lemmasPositions(String content, LemmaFinder lemmaFinderRu,
+                                                    LemmaFinderEn lemmaFinderEn, List<String> lemmaList) {
+        HashMap<Integer, String> positionOfLemma = new HashMap<>();
+
+        // Разбиваем контент на слова и нормализуем
+        String[] words = content.split("\s+");
+
+        for (String word : words) {
+            String normalizedWord = normalizeWord(word);
+            int index = content.indexOf(word);
+
+            if (isRussian(normalizedWord)) {
+                String lemma = lemmaFinderRu.getLemma(normalizedWord);
+                if (lemmaList.contains(lemma)) {
+                    while (index != -1) {
+                        positionOfLemma.put(index, normalizedWord);
+                        index = content.indexOf(word, index + 1);
+                    }
+                }
+            } else if (isEnglish(normalizedWord)) {
+                String lemma = lemmaFinderEn.getLemma(normalizedWord);
+                if (lemmaList.contains(lemma)) {
+                    while (index != -1) {
+                        positionOfLemma.put(index, normalizedWord);
+                        index = content.indexOf(word, index + 1);
+                    }
+                }
+            }
+        }
+        return positionOfLemma;
+    }
+
+    // Определение последовательности слов
+    private boolean hasConsecutiveWords(Map<Integer, String> positionsOfLemmas) {
+        List<Integer> positions = new ArrayList<>(positionsOfLemmas.keySet());
+        Collections.sort(positions);
+
+        int consecutiveCount = 1;
+
+        for (int i = 1; i < positions.size(); i++) {
+            int prevPos = positions.get(i - 1);
+            int currPos = positions.get(i);
+
+            String prevWord = positionsOfLemmas.get(prevPos);
+            int expectedNextStart = prevPos + prevWord.length() + 1;
+
+            if (currPos == expectedNextStart) {
+                consecutiveCount++;
+                if (consecutiveCount >= 3) {
+                    return true;
+                }
+            } else {
+                consecutiveCount = 1;
+            }
+        }
+
+        return false;
     }
 
 }
