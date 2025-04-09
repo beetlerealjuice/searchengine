@@ -1,5 +1,7 @@
 package searchengine.utils;
 
+import java.util.regex.Pattern;
+
 public class TextUtils {
 
     private TextUtils() {
@@ -26,4 +28,13 @@ public class TextUtils {
         // Подсчёт количества открывающих тегов <b>
         return snippet == null ? 0 : snippet.split("<b>", -1).length - 1;
     }
+
+    public static String highlightMatches(String text, Pattern wordPattern) {
+        return wordPattern.matcher(text).replaceAll("<b>$1</b>");
+    }
+
+    public static String ensureEndsWithPunctuation(String snippet) {
+        return snippet.matches(".*[.!?]$") ? snippet : snippet + "...";
+    }
+
 }

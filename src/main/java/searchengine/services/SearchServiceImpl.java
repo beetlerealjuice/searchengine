@@ -153,7 +153,6 @@ public class SearchServiceImpl implements SearchService {
                 .collect(Collectors.toList());
 
 
-        System.out.println("Stop");
         return sortedList;
     }
 
@@ -325,102 +324,22 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private List<PageSnippet> getSnippets(List<Page> pages, Set<String> matchingWords) {
-
         List<PageSnippet> result = new ArrayList<>();
         int maxSnippetLength = 150;
 
-        // Собираем регулярное выражение для искомых слов (регистронезависимо)
         String regex = "\\b(" + String.join("|", matchingWords) + ")\\b";
         Pattern wordPattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
-
-        // Регулярное выражение для разделения текста на предложения.
-        // Предполагается, что предложение заканчивается точкой, восклицательным или вопросительным знаком.
         String sentenceDelimiter = "(?<=[.!?])\\s+";
 
         for (Page page : pages) {
             String content = page.getContent();
-            if (content == null || content.isEmpty()) {
-                System.out.println("Пустое содержимое");
-                continue;
-            }
-            // Извлекаем текст через Jsoup (body().text() — получаем только видимый текст)
+            if (content == null || content.isEmpty()) continue;
+
             Document document = Jsoup.parse(content);
-            String plainText = document.body().text();
-            // Нормализуем пробелы
-            plainText = plainText.replaceAll("\\s+", " ").trim();
-            if (plainText.isEmpty()) {
-                System.out.println("Пустой текст");
-                continue;
-            }
+            String plainText = document.body().text().replaceAll("\\s+", " ").trim();
+            if (plainText.isEmpty()) continue;
 
-            List<String> snippetsForPage = new ArrayList<>();
-
-            // Если в тексте есть знаки окончания предложений, разбиваем на предложения.
-            boolean hasSentenceDelimiter = plainText.matches(".*[.!?].*");
-            if (hasSentenceDelimiter) {
-                String[] sentences = plainText.split(sentenceDelimiter);
-
-                // Для каждого предложения проверяем наличие хотя бы одного искомого слова.
-                for (String sentence : sentences) {
-                    String trimmedSentence = sentence.trim();
-                    Matcher m = wordPattern.matcher(trimmedSentence);
-                    if (!m.find()) {
-                        continue; // предложение не содержит искомых слов
-                    }
-                    String snippetCandidate;
-                    if (trimmedSentence.length() <= maxSnippetLength) {
-                        snippetCandidate = trimmedSentence;
-                    } else {
-                        // Если предложение слишком длинное, обрезаем до maxSnippetLength
-                        String truncated = getString(trimmedSentence, maxSnippetLength);
-                        // Проверяем, что в обрезанном фрагменте всё ещё есть искомое слово
-                        if (wordPattern.matcher(truncated).find()) {
-                            snippetCandidate = truncated;
-                        } else {
-                            // Искомое слово не найдено в обрезанном фрагменте.
-                            // Ищем в полном предложении, начиная с позиции maxSnippetLength
-                            Matcher matcherInFull = wordPattern.matcher(trimmedSentence);
-                            if (matcherInFull.find(maxSnippetLength)) {
-                                int matchIndex = matcherInFull.start();
-                                // Формируем сниппет, начиная с "..." и до конца предложения
-                                String tailSnippet = trimmedSentence.substring(matchIndex);
-                                snippetCandidate = "..." + tailSnippet;
-                                // Если полученный сниппет всё ещё длиннее maxSnippetLength, обрезаем его
-                                if (snippetCandidate.length() > maxSnippetLength) {
-                                    snippetCandidate = snippetCandidate.substring(0, maxSnippetLength);
-                                    // Если после обрезки сниппет не заканчивается знаком конца предложения, добавляем многоточие
-                                    if (!snippetCandidate.matches(".*[.!?]$")) {
-                                        snippetCandidate += "...";
-                                    }
-                                }
-                            } else {
-                                // Если искомое слово не найдено даже в полной версии предложения,
-                                // оставляем первоначальный фрагмент (с выводом отладки)
-                                snippetCandidate = truncated;
-                                System.out.println("Совпадение за обрезкой");
-                            }
-                        }
-                    }
-                    // Если сниппет не заканчивается знаком окончания предложения, добавляем многоточие
-                    if (!snippetCandidate.matches(".*[.!?]$")) {
-                        snippetCandidate += "...";
-                    }
-                    // Выделяем совпадения тегом <b>
-                    Matcher highlightMatcher = wordPattern.matcher(snippetCandidate);
-                    String highlightedSnippet = highlightMatcher.replaceAll("<b>$1</b>");
-                    snippetsForPage.add(highlightedSnippet);
-                }
-            } else {
-                // Если разделителей предложений нет, находим первое совпадение и берем фиксированный фрагмент.
-                Matcher m = wordPattern.matcher(plainText);
-                System.out.println("Текст без разделителей");
-                if (m.find()) {
-                    String snippetCandidate = getString(m, plainText, maxSnippetLength);
-                    Matcher highlightMatcher = wordPattern.matcher(snippetCandidate);
-                    String highlightedSnippet = highlightMatcher.replaceAll("<b>$1</b>");
-                    snippetsForPage.add(highlightedSnippet);
-                }
-            }
+            List<String> snippetsForPage = extractSnippets(plainText, wordPattern, maxSnippetLength, sentenceDelimiter);
 
             if (!snippetsForPage.isEmpty()) {
                 PageSnippet pageSnippet = new PageSnippet();
@@ -429,36 +348,67 @@ public class SearchServiceImpl implements SearchService {
                 result.add(pageSnippet);
             }
         }
+
         return result;
     }
 
-    private static String getString(Matcher m, String plainText, int maxSnippetLength) {
-        int matchStart = m.start();
-        // Отступаем до начала слова (до пробела или начала строки)
-        int snippetStart = matchStart;
-        while (snippetStart > 0 && plainText.charAt(snippetStart - 1) != ' ') {
-            snippetStart--;
+    private List<String> extractSnippets(String text, Pattern wordPattern, int maxLength, String delimiter) {
+        List<String> snippets = new ArrayList<>();
+
+        if (text.matches(".*[.!?].*")) {
+            for (String sentence : text.split(delimiter)) {
+                String trimmed = sentence.trim();
+                if (!wordPattern.matcher(trimmed).find()) continue;
+
+                String snippet = buildSnippet(trimmed, wordPattern, maxLength);
+                snippets.add(TextUtils.highlightMatches(snippet, wordPattern));
+            }
+        } else {
+            Matcher m = wordPattern.matcher(text);
+            if (m.find()) {
+                String snippet = getString(m, text, maxLength);
+                snippets.add(TextUtils.highlightMatches(snippet, wordPattern));
+            }
         }
-        int snippetEnd = Math.min(snippetStart + maxSnippetLength, plainText.length());
-        String snippetCandidate = plainText.substring(snippetStart, snippetEnd).trim();
-        if (snippetEnd < plainText.length()) {
-            snippetCandidate += "...";
-        }
-        return snippetCandidate;
+
+        return snippets;
     }
 
-    private static String getString(String trimmedSentence, int maxSnippetLength) {
-        String truncated = trimmedSentence.substring(0, maxSnippetLength);
-        // Пытаемся обрезать до конца предложения внутри фрагмента
-        int lastDelimiter = Math.max(truncated.lastIndexOf("."),
-                Math.max(truncated.lastIndexOf("!"), truncated.lastIndexOf("?")));
-        if (lastDelimiter != -1) {
-            truncated = truncated.substring(0, lastDelimiter + 1);
-        } else {
-            truncated += "...";
+    private String buildSnippet(String sentence, Pattern wordPattern, int maxLength) {
+        if (sentence.length() <= maxLength) {
+            return TextUtils.ensureEndsWithPunctuation(sentence);
         }
-        return truncated;
+
+        String truncated = getString(sentence, maxLength);
+        if (wordPattern.matcher(truncated).find()) {
+            return TextUtils.ensureEndsWithPunctuation(truncated);
+        }
+
+        Matcher matcher = wordPattern.matcher(sentence);
+        if (matcher.find(maxLength)) {
+            String tail = "..." + sentence.substring(matcher.start());
+            if (tail.length() > maxLength) {
+                tail = tail.substring(0, maxLength);
+                if (!tail.matches(".*[.!?]$")) {
+                    tail += "...";
+                }
+            }
+            return tail;
+        }
+
+        return TextUtils.ensureEndsWithPunctuation(truncated);
     }
+
+    private String getString(String text, int maxLength) {
+        return text.length() <= maxLength ? text : text.substring(0, maxLength);
+    }
+
+    private String getString(Matcher matcher, String text, int maxLength) {
+        int start = Math.max(0, matcher.start() - 10);
+        int end = Math.min(text.length(), start + maxLength);
+        return text.substring(start, end);
+    }
+
 
     private Set<String> expandMatchingWords(Set<String> matchingWords) {
         Set<String> expandedWords = new HashSet<>(matchingWords);
@@ -545,7 +495,6 @@ public class SearchServiceImpl implements SearchService {
             //lemmasPositionsForPage.put(pageId, positionsOfLemmas);
         }
 
-        System.out.println("Stop");
         // Нормализация значений рангов (от 0 до 1)
         if (!pageRank.isEmpty()) {
             float max = Collections.max(pageRank.values());
