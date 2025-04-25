@@ -6,7 +6,7 @@ import lombok.Data;
 
 @Data
 @Builder
-public class IndexingResponse {
+public class Response {
     private boolean result;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String error;

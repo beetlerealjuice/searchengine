@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -15,6 +15,7 @@ import searchengine.model.SearchData;
 import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
+import searchengine.services.SearchService;
 import searchengine.utils.LemmaFinder;
 import searchengine.utils.LemmaFinderEn;
 import searchengine.utils.PageSnippet;
@@ -22,8 +23,6 @@ import searchengine.utils.TextUtils;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -325,90 +324,13 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private List<PageSnippet> getSnippets(List<Page> pages, Set<String> matchingWords) {
+
         List<PageSnippet> result = new ArrayList<>();
-        int maxSnippetLength = 150;
 
-        String regex = "\\b(" + String.join("|", matchingWords) + ")\\b";
-        Pattern wordPattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
-        String sentenceDelimiter = "(?<=[.!?])\\s+";
-
-        for (Page page : pages) {
-            String content = page.getContent();
-            if (content == null || content.isEmpty()) continue;
-
-            Document document = Jsoup.parse(content);
-            String plainText = document.body().text().replaceAll("\\s+", " ").trim();
-            if (plainText.isEmpty()) continue;
-
-            List<String> snippetsForPage = extractSnippets(plainText, wordPattern, maxSnippetLength, sentenceDelimiter);
-
-            if (!snippetsForPage.isEmpty()) {
-                PageSnippet pageSnippet = new PageSnippet();
-                pageSnippet.setPageId(page.getId());
-                pageSnippet.setSnippet(snippetsForPage);
-                result.add(pageSnippet);
-            }
-        }
-
+        System.out.println("Stop");
         return result;
     }
 
-    private List<String> extractSnippets(String text, Pattern wordPattern, int maxLength, String delimiter) {
-        List<String> snippets = new ArrayList<>();
-
-        if (text.matches(".*[.!?].*")) {
-            for (String sentence : text.split(delimiter)) {
-                String trimmed = sentence.trim();
-                if (!wordPattern.matcher(trimmed).find()) continue;
-
-                String snippet = buildSnippet(trimmed, wordPattern, maxLength);
-                snippets.add(TextUtils.highlightMatches(snippet, wordPattern));
-            }
-        } else {
-            Matcher m = wordPattern.matcher(text);
-            if (m.find()) {
-                String snippet = getString(m, text, maxLength);
-                snippets.add(TextUtils.highlightMatches(snippet, wordPattern));
-            }
-        }
-
-        return snippets;
-    }
-
-    private String buildSnippet(String sentence, Pattern wordPattern, int maxLength) {
-        if (sentence.length() <= maxLength) {
-            return TextUtils.ensureEndsWithPunctuation(sentence);
-        }
-
-        String truncated = getString(sentence, maxLength);
-        if (wordPattern.matcher(truncated).find()) {
-            return TextUtils.ensureEndsWithPunctuation(truncated);
-        }
-
-        Matcher matcher = wordPattern.matcher(sentence);
-        if (matcher.find(maxLength)) {
-            String tail = "..." + sentence.substring(matcher.start());
-            if (tail.length() > maxLength) {
-                tail = tail.substring(0, maxLength);
-                if (!tail.matches(".*[.!?]$")) {
-                    tail += "...";
-                }
-            }
-            return tail;
-        }
-
-        return TextUtils.ensureEndsWithPunctuation(truncated);
-    }
-
-    private String getString(String text, int maxLength) {
-        return text.length() <= maxLength ? text : text.substring(0, maxLength);
-    }
-
-    private String getString(Matcher matcher, String text, int maxLength) {
-        int start = Math.max(0, matcher.start() - 10);
-        int end = Math.min(text.length(), start + maxLength);
-        return text.substring(start, end);
-    }
 
 
     private Set<String> expandMatchingWords(Set<String> matchingWords) {
@@ -471,7 +393,7 @@ public class SearchServiceImpl implements SearchService {
             pageContent.put(pageId, content);
         }
 
-        //Map<Integer, Map<Integer, String>> lemmasPositionsForPage = new HashMap<>();
+        Map<Integer, Map<Integer, String>> lemmasPositionsForPage = new HashMap<>();
 
         LemmaFinder lemmaFinderRu = LemmaFinder.getInstance();
         LemmaFinderEn lemmaFinderEn = LemmaFinderEn.getInstance();
@@ -494,8 +416,9 @@ public class SearchServiceImpl implements SearchService {
                                 .orElse(0f) + 1
                 );
             }
-            //lemmasPositionsForPage.put(pageId, positionsOfLemmas);
+            lemmasPositionsForPage.put(pageId, positionsOfLemmas);
         }
+        System.out.println("Stop");
 
         // Нормализация значений рангов (от 0 до 1)
         if (!pageRank.isEmpty()) {

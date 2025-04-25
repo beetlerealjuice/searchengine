@@ -2,6 +2,8 @@ package searchengine.utils;
 
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 
 import java.io.IOException;
 import java.util.*;
@@ -24,7 +26,16 @@ public class LemmaFinderEn {
         throw new RuntimeException("Disallow construct");
     }
 
-    public Map<String, Integer> collectLemmas(String text) {
+    public Map<String, Integer> collectLemmas(String url) {
+        Document elements;
+        try {
+            elements = Jsoup.connect(url)
+                    .userAgent("Mozilla").get();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        String text = elements.text();
+
         String[] words = arrayContainsEnglishWords(text);
         HashMap<String, Integer> lemmas = new HashMap<>();
 
@@ -43,7 +54,7 @@ public class LemmaFinderEn {
                 continue;
             }
 
-            String normalWord = normalForms.get(normalForms.size()-1);
+            String normalWord = normalForms.get(normalForms.size() - 1);
 
             if (lemmas.containsKey(normalWord)) {
                 lemmas.put(normalWord, lemmas.get(normalWord) + 1);
