@@ -284,11 +284,19 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             URI uri = new URI(url);
             String path = uri.getPath();
-            return (path != null && !path.isEmpty()) ? path : "/";
+            if (path == null || path.isEmpty()) {
+                return "/";
+            }
+            // Убираем лишние слэши в конце, кроме корня "/"
+            if (path.endsWith("/") && path.length() > 1) {
+                path = path.replaceAll("/+$", ""); // убираем все конечные /
+            }
+            return path;
         } catch (URISyntaxException e) {
             return "/";
         }
     }
+
 
     public static void setStopExecutor() {
         executor.shutdown();

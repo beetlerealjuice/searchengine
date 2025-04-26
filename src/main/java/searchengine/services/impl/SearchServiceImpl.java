@@ -23,6 +23,7 @@ import searchengine.utils.TextUtils;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
@@ -107,16 +108,26 @@ public class SearchServiceImpl implements SearchService {
         // Формируем поисковую выдачу
         List<SearchData> searchDataList = getSearchData(snippets, pageRepository, relativeRelevance);
 
+        int totalCount = searchDataList.size();
+
+        if (offset == null) {
+            offset = 0;
+        }
+        if (limit == null || limit <= 0) {
+            limit = 20; // дефолтный лимит
+        }
+
+        // Защита от выхода за границы списка
+        int fromIndex = Math.min(offset, totalCount);
+        int toIndex = Math.min(offset + limit, totalCount);
+
+        List<SearchData> paginatedResults = searchDataList.subList(fromIndex, toIndex);
 
         return SearchResponse.builder()
                 .result(true)
-                .count(searchDataList.size())
-                .data(searchDataList)
+                .count(totalCount)
+                .data(paginatedResults)
                 .build();
-
-        // todo: реализация пагинации и формирование окончательного ответа
-
-
     }
 
     private List<SearchData> getSearchData(List<PageSnippet> snippets, PageRepository pages, Map<Integer, Float> relevance) {
@@ -152,11 +163,8 @@ public class SearchServiceImpl implements SearchService {
                 )
                 .collect(Collectors.toList());
 
-
         return sortedList;
     }
-
-
 
 
     // Метод для получения лемм из запроса (обрабатываем каждое слово отдельно)
@@ -324,14 +332,95 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private List<PageSnippet> getSnippets(List<Page> pages, Set<String> matchingWords) {
+        List<PageSnippet> snippets = new ArrayList<>();
+        for (Page page : pages) {
+            String text = Jsoup.parse(page.getContent()).body().text();
+            String[] sentences = text.split("(?<=[.!?])\\s+"); // разбиваем на предложения
+            List<String> snippetList = new ArrayList<>();
 
-        List<PageSnippet> result = new ArrayList<>();
+            for (String sentence : sentences) {
+                String lowerCaseSentence = sentence.toLowerCase();
+                boolean containsMatch = matchingWords.stream()
+                        .anyMatch(word -> lowerCaseSentence.contains(word.toLowerCase()));
 
-        System.out.println("Stop");
-        return result;
+                if (containsMatch) {
+                    String highlighted = highlightWords(sentence, matchingWords);
+
+                    if (highlighted.length() > 150) {
+                        highlighted = trimAroundFirstMatch(highlighted, matchingWords, 150);
+                    }
+
+                    snippetList.add(highlighted);
+                }
+            }
+
+            if (!snippetList.isEmpty()) {
+                PageSnippet pageSnippet = new PageSnippet();
+                pageSnippet.setPageId(page.getId());
+                pageSnippet.setSnippet(snippetList);
+                snippets.add(pageSnippet);
+            }
+        }
+        return snippets;
     }
 
+    private String highlightWords(String sentence, Set<String> matchingWords) {
+        String highlighted = sentence;
+        for (String word : matchingWords) {
+            highlighted = highlighted.replaceAll("(?i)(" + Pattern.quote(word) + ")", "<b>$1</b>");
+        }
+        return highlighted;
+    }
 
+    private String trimAroundFirstMatch(String text, Set<String> matchingWords, int maxLength) {
+        String lowerText = text.toLowerCase();
+        int firstMatchIndex = findFirstMatchIndex(text, matchingWords);
+
+        if (firstMatchIndex == -1) {
+            return text.length() <= maxLength ? text : text.substring(0, maxLength) + "...";
+        }
+
+        int start = Math.max(0, firstMatchIndex - maxLength / 2);
+        int end = Math.min(text.length(), start + maxLength);
+
+        String trimmed = text.substring(start, end);
+
+        // Обрезаем аккуратно по словам
+        trimmed = adjustToWordBoundaries(trimmed);
+
+        if (start > 0 || end < text.length()) {
+            trimmed = "..." + trimmed + "...";
+        }
+
+        return trimmed;
+    }
+
+    private int findFirstMatchIndex(String text, Set<String> matchingWords) {
+        String lowerText = text.toLowerCase();
+        int minIndex = Integer.MAX_VALUE;
+        for (String word : matchingWords) {
+            int idx = lowerText.indexOf(word.toLowerCase());
+            if (idx != -1 && idx < minIndex) {
+                minIndex = idx;
+            }
+        }
+        return minIndex == Integer.MAX_VALUE ? -1 : minIndex;
+    }
+
+    private String adjustToWordBoundaries(String text) {
+        // Убираем обрыв слов с краёв
+        int start = 0;
+        int end = text.length();
+
+        while (start < end && !Character.isWhitespace(text.charAt(start))) {
+            start++;
+        }
+        while (end > start && !Character.isWhitespace(text.charAt(end - 1))) {
+            end--;
+        }
+
+        return text.substring(start, end).trim();
+    }
 
     private Set<String> expandMatchingWords(Set<String> matchingWords) {
         Set<String> expandedWords = new HashSet<>(matchingWords);
@@ -408,7 +497,6 @@ public class SearchServiceImpl implements SearchService {
             // то присвоить данной странице максимальную релевантность
             if (lemmaList.size() < 3) continue;
             if (hasConsecutiveWords(positionsOfLemmas, content, lemmaFinderRu, lemmaFinderEn)) {
-                System.out.println("Нашел фразу");
                 pageRank.put(
                         pageId,
                         pageRank.values().stream()
@@ -418,7 +506,6 @@ public class SearchServiceImpl implements SearchService {
             }
             lemmasPositionsForPage.put(pageId, positionsOfLemmas);
         }
-        System.out.println("Stop");
 
         // Нормализация значений рангов (от 0 до 1)
         if (!pageRank.isEmpty()) {
@@ -476,22 +563,31 @@ public class SearchServiceImpl implements SearchService {
             int prevPos = positions.get(i - 1);
             int currPos = positions.get(i);
 
-            int begin = prevPos + positionsOfLemmas.get(prevPos).length();
+            // Находим реальную длину слова в тексте
+            int wordEnd = prevPos;
+            while (wordEnd < content.length() && !Character.isWhitespace(content.charAt(wordEnd))) {
+                wordEnd++;
+            }
+
+            int begin = wordEnd;
             int end = currPos;
 
-            String betweenText = "";
+            if (begin >= end) continue;
 
-            if (begin < end) {
-                betweenText = content.substring(begin, end).trim();
-            } else continue;
-
-            if (betweenText.isBlank()) {
-                // Если только пробелы между словами — считаем подряд
+            String betweenText = content.substring(begin, end).trim();
+            if (betweenText.isEmpty()) {
                 consecutiveCount++;
             } else {
+                // Убираем кавычки
+                betweenText = betweenText.replaceAll("[\"«»„“]", "").trim();
+
+                if (betweenText.isEmpty()) {
+                    consecutiveCount++;
+                    continue;
+                }
 
                 String[] wordsBetween = betweenText.split("\\s+");
-                boolean allParticles = true;
+                boolean allParticlesOrQuotes = true;
 
                 for (String word : wordsBetween) {
                     if (word.isBlank()) continue;
@@ -506,7 +602,7 @@ public class SearchServiceImpl implements SearchService {
                                 : lemmaFinderEn.anyWordBaseBelongToParticle(lemmaFinderEn.luceneMorphology.getMorphInfo(word));
 
                         if (!isParticle) {
-                            allParticles = false;
+                            allParticlesOrQuotes = false;
                             break;
                         }
                     } catch (ArrayIndexOutOfBoundsException | WrongCharaterException e) {
@@ -514,7 +610,7 @@ public class SearchServiceImpl implements SearchService {
                     }
                 }
 
-                if (allParticles) {
+                if (allParticlesOrQuotes) {
                     consecutiveCount++;
                 } else {
                     consecutiveCount = 1;
